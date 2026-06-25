@@ -1,0 +1,12 @@
+{
+  "name": "follower-equip-control",
+  "version-semver": "2.0.0",
+  "dependencies": [
+    "detours",
+    "fmt",
+    "rapidcsv",
+    "spdlog",
+    "xbyak"
+  ],
+  "builtin-baseline": "83972272512ce4ede5fc3b2ba98f6468b179f192"
+}

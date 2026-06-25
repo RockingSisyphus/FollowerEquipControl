@@ -1,0 +1,42 @@
+# Build outputs
+
+/build/
+/out/
+/install/
+/dist/
+/vcpkg_installed/
+
+# CMake local files
+
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+/Directory.Build.props
+/CMakeUserPresets.json
+
+# Local dependency checkouts outside the submodule path
+
+/CommonLibSSE-NG/
+
+# Visual Studio / MSVC artifacts
+
+/.vs/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.map
+
+# Editor and OS files
+
+.vscode/
+.idea/
+*.user
+*.suo
+*.tmp
+.DS_Store
+Thumbs.db
