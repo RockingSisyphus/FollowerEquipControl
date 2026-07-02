@@ -1,11 +1,11 @@
-// Adds SkyUI ContainerMenu icons for saved outfit item selections.
+// Adds SkyUI ContainerMenu icons for saved hand item selections.
 // Requires SkyUI inventory entry formatting and external SWF icon loading.
 
 #pragma once
 
 namespace FEC
 {
-	class OutfitSyncIconInjector
+	class HandItemIconInjector
 	{
 	public:
 		static void Install();

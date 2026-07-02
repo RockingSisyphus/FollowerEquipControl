@@ -17,7 +17,6 @@ namespace FEC::ActorScope
 	enum class EquipCapability : std::uint8_t
 	{
 		kNone,
-		kHandOnly,
 		kFull
 	};
 
@@ -36,7 +35,7 @@ namespace FEC::ActorScope
 		EquipCapability capability{ EquipCapability::kNone };
 		// Follower-like features should apply to this actor.
 		bool            inScope{ false };
-		// Body-slot armor may be equipped on this actor.
+		// Armor-related systems may run for this actor.
 		bool            armorAllowed{ false };
 	};
 
@@ -49,7 +48,9 @@ namespace FEC::ActorScope
 	[[nodiscard]] EquipPolicy ResolveEquipPolicy(RE::Actor* a_actor) noexcept;
 
 	[[nodiscard]] bool IsAffectedFollower(RE::Actor* a_actor) noexcept;
-	[[nodiscard]] bool BodyEquipAllowed(RE::Actor* a_actor) noexcept;
+	// Actor-level gate; does not validate a specific ARMO.
+	[[nodiscard]] bool ArmorValidationAllowed(RE::Actor* a_actor) noexcept;
+	// Final armor gate for paths with a known ARMO.
 	[[nodiscard]] bool ArmorEquipAllowed(RE::Actor* a_actor, const RE::TESObjectARMO* a_armor) noexcept;
 	[[nodiscard]] bool HandEquipAllowed(RE::Actor* a_actor) noexcept;
 

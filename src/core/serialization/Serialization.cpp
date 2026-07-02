@@ -2,6 +2,7 @@
 
 #include "CombatEquipPreference.h"
 #include "CombatEquipOverrideState.h"
+#include "HandItemRestore.h"
 #include "PreCombatEquipRestore.h"
 #include "HeadgearAutoEquip.h"
 #include "KnownFollowerState.h"
@@ -21,6 +22,7 @@ namespace FEC
 		constexpr std::uint32_t kRecordKnownFollowers = 'KNFL';
 		constexpr std::uint32_t kRecordCombatEquipPreference = 'CEPR';
 		constexpr std::uint32_t kRecordOutfitSnapshotRestore = 'OSRS';
+		constexpr std::uint32_t kRecordHandItemRestore = 'HIRS';
 		constexpr std::uint32_t kRecordPreCombatEquipRestore = 'CEPC';
 		constexpr std::uint32_t kRecordHeadgearAutoEquip = 'CHGT';
 		constexpr std::uint32_t kRecordSpellSuppression = 'SSPL';
@@ -28,6 +30,7 @@ namespace FEC
 		constexpr std::uint32_t kRecordVersionKnownFollowers = 2;
 		constexpr std::uint32_t kRecordVersionCombatEquipPreference = 2;
 		constexpr std::uint32_t kRecordVersionOutfitSnapshotRestore = 2;
+		constexpr std::uint32_t kRecordVersionHandItemRestore = 2;
 		constexpr std::uint32_t kRecordVersionPreCombatEquipRestore = 2;
 		constexpr std::uint32_t kRecordVersionHeadgearAutoEquip = 2;
 		constexpr std::uint32_t kRecordVersionSpellSuppression = 2;
@@ -339,6 +342,29 @@ namespace FEC
 			}
 
 			{
+				auto entries = HandItemRestore::SnapshotEntries();
+				const std::uint32_t count = static_cast<std::uint32_t>(entries.size());
+				if (a_intfc->OpenRecord(kRecordHandItemRestore, kRecordVersionHandItemRestore)) {
+					a_intfc->WriteRecordData(&count, sizeof(count));
+					for (const auto& e : entries) {
+						const auto kindRaw = static_cast<std::uint8_t>(e.kind);
+						a_intfc->WriteRecordData(&e.actorID, sizeof(e.actorID));
+						a_intfc->WriteRecordData(&kindRaw, sizeof(kindRaw));
+						a_intfc->WriteRecordData(&e.entry.baseObjectID, sizeof(e.entry.baseObjectID));
+						const bool hasSig = e.entry.signature.has_value();
+						if (!WriteBool(a_intfc, hasSig)) {
+							continue;
+						}
+						if (hasSig) {
+							if (!WriteFullSignature(a_intfc, *e.entry.signature)) {
+								logger::warn("Failed to write HIRS signature actor={:08X}", e.actorID);
+							}
+						}
+					}
+				}
+			}
+
+			{
 				auto entries = PreCombatEquipRestore::SnapshotEntries();
 				const std::uint32_t count = static_cast<std::uint32_t>(entries.size());
 				if (a_intfc->OpenRecord(kRecordPreCombatEquipRestore, kRecordVersionPreCombatEquipRestore)) {
@@ -451,6 +477,7 @@ namespace FEC
 				if (type != kRecordKnownFollowers &&
 					type != kRecordCombatEquipPreference &&
 					type != kRecordOutfitSnapshotRestore &&
+					type != kRecordHandItemRestore &&
 					type != kRecordPreCombatEquipRestore &&
 					type != kRecordHeadgearAutoEquip &&
 					type != kRecordSpellSuppression &&
@@ -467,6 +494,10 @@ namespace FEC
 				}
 				if (type == kRecordOutfitSnapshotRestore && version != kRecordVersionOutfitSnapshotRestore) {
 					logger::warn("Ignoring OSRS record with unexpected version {}", version);
+					continue;
+				}
+				if (type == kRecordHandItemRestore && version != kRecordVersionHandItemRestore) {
+					logger::warn("Ignoring HIRS record with unexpected version {}", version);
 					continue;
 				}
 				if (type == kRecordPreCombatEquipRestore && version != kRecordVersionPreCombatEquipRestore) {
@@ -576,6 +607,53 @@ namespace FEC
 						OutfitSnapshotRestore::SetLoadedEntry(
 							actorID,
 							slotID,
+							std::move(entry));
+					}
+				} else if (type == kRecordHandItemRestore) {
+					for (std::uint32_t i = 0; i < count; i++) {
+						RE::FormID storedActorID{ 0 };
+						std::uint8_t kindRaw{ 0 };
+						RE::FormID storedBaseID{ 0 };
+						if (!a_intfc->ReadRecordData(&storedActorID, sizeof(storedActorID)) ||
+							!a_intfc->ReadRecordData(&kindRaw, sizeof(kindRaw)) ||
+							!a_intfc->ReadRecordData(&storedBaseID, sizeof(storedBaseID))) {
+							logger::warn("Failed to read HIRS entry header {}/{}", i + 1, count);
+							break;
+						}
+						bool hasSig = false;
+						if (!ReadBool(a_intfc, hasSig)) {
+							logger::warn("Failed to read HIRS signature flag {}/{}", i + 1, count);
+							break;
+						}
+						std::optional<InstanceSignature> sig;
+						if (hasSig) {
+							InstanceSignature tmp;
+							if (!ReadFullSignature(a_intfc, tmp) || !ResolveSignatureFormIDs(a_intfc, tmp)) {
+								hasSig = false;
+							} else {
+								sig = std::move(tmp);
+							}
+						}
+
+						if (kindRaw > static_cast<std::uint8_t>(HandItemRestore::SlotKind::kAmmo)) {
+							continue;
+						}
+
+						RE::FormID actorID{ 0 };
+						if (!a_intfc->ResolveFormID(storedActorID, actorID)) {
+							continue;
+						}
+						RE::FormID baseID{ 0 };
+						if (storedBaseID != 0 && !a_intfc->ResolveFormID(storedBaseID, baseID)) {
+							continue;
+						}
+
+						HandItemRestore::Entry entry{};
+						entry.baseObjectID = baseID;
+						entry.signature = std::move(sig);
+						HandItemRestore::SetLoadedEntry(
+							actorID,
+							static_cast<HandItemRestore::SlotKind>(kindRaw),
 							std::move(entry));
 					}
 				} else if (type == kRecordPreCombatEquipRestore) {
@@ -779,6 +857,7 @@ namespace FEC
 			KnownFollowerState::Clear();
 			CombatEquipPreference::Clear();
 			OutfitSnapshotRestore::ClearSnapshots();
+			HandItemRestore::ClearSnapshots();
 			PreCombatEquipRestore::ClearSnapshots();
 			HeadgearAutoEquip::ClearSnapshots();
 			CombatEquipOverride::State::Clear();

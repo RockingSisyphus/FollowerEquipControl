@@ -90,6 +90,11 @@ namespace FEC::CombatLootBlocker
 
 	void Install()
 	{
+		if (!IsEnabled()) {
+			Uninstall();
+			return;
+		}
+
 		if (g_installed.load()) {
 			return;
 		}

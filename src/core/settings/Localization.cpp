@@ -315,12 +315,8 @@ namespace FEC::Localization
 			out.emplace("ui.actor_scope.affect_former_followers.help", "Extends all mod features to dismissed and former followers.\n\nThe mod continues managing equipment and preferences for these followers even after you dismiss them. Without this setting, only followers currently in your party are affected.");
 			out.emplace("ui.actor_scope.include_inclusion_actors.label", "Included Actors");
 			out.emplace("ui.actor_scope.include_inclusion_actors.help", "Includes actors matched by the configured inclusion system in the mod scope.\n\nNot all follower mods register their NPCs as active party members, which means the mod does not recognize them by default. The inclusion system lets you specify actors, keywords, or factions so the mod manages them like any other follower. This lets mod authors and users include any actor they want, not just those from follower mods.");
-			out.emplace("ui.actor_scope.include_non_humanoid_inclusion_actors.label", "Non-Humanoid Included Actors");
-			out.emplace("ui.actor_scope.include_non_humanoid_inclusion_actors.help", "Removes equipment restrictions on non-humanoid actors admitted via the inclusion system.\n\nWhen disabled:\n- Non-humanoid actors (atronachs, creatures, etc.) are completely excluded from the mod scope.\n- Actors that cannot normally equip armor (draugr, skeletons, falmer, etc.) remain limited to weapons and ammo, matching Skyrim's native behavior.\n\nWhen enabled, all non-humanoid inclusion actors receive the full mod feature set, including armor equip (which may not apply gameplay effects or render visually).");
 			out.emplace("ui.actor_scope.include_player_summons.label", "Player Summons");
 			out.emplace("ui.actor_scope.include_player_summons.help", "Includes all player-commanded actors in the mod scope, such as summoned creatures, reanimated corpses, and similar actors controlled through Skyrim's command systems.\n\nWhen disabled, these actors are ignored entirely by the mod.");
-			out.emplace("ui.actor_scope.include_non_humanoid_summons.label", "Non-Humanoid Summons");
-			out.emplace("ui.actor_scope.include_non_humanoid_summons.help", "Removes equipment restrictions on non-humanoid player-commanded actors.\n\nWhen disabled:\n- Non-humanoid actors (wolves, atronachs, spiders, etc.) are completely excluded from the mod scope.\n- Actors that cannot normally equip armor (draugr, skeletons, falmer, etc.) remain limited to weapons and ammo, matching Skyrim's native behavior.\n\nWhen enabled, all non-humanoid actors receive the full mod feature set, including armor equip (which may not apply gameplay effects or render visually).");
 
 			// Scope & Access > Quick Trade
 			out.emplace("ui.header.quick_trade", "Quick Trade");
@@ -384,13 +380,15 @@ namespace FEC::Localization
 			// Controls & UI > UI Icon Indicators
 			out.emplace("ui.header.ui_icon_indicators", "UI Icon Indicators");
 			out.emplace("ui.icon_appearance.enable_indicators.label", "Icon Indicators");
-			out.emplace("ui.icon_appearance.enable_indicators.help", "Enables the mod's icons next to item names in the trade menu.\n\nWhile trading with a follower, icons appear next to items that have a combat preference, headgear preference, or re-equip selection. The toggles below control which icon types are shown.");
+			out.emplace("ui.icon_appearance.enable_indicators.help", "Enables the mod's icons next to item names in the trade menu.\n\nWhile trading with a follower, icons appear next to items that have a combat preference, headgear preference, saved outfit selection, or saved hand-item selection. The toggles below control which icon types are shown.");
 			out.emplace("ui.combat_equip.combat_preference_icon.label", "Combat Preference Icons");
 			out.emplace("ui.combat_equip.combat_preference_icon.help", "Displays an icon next to items in the trade list that are saved as combat preferences.\n\nWhile trading with a follower, weapons, shields, and ammo you have saved as combat preferences are marked with a small icon. This lets you see which items the follower will prioritize to equip in combat.");
 			out.emplace("ui.combat_equip.headgear_preference_icon.label", "Headgear Preference Icons");
 			out.emplace("ui.combat_equip.headgear_preference_icon.help", "Displays an icon next to the headgear item in the trade list that is saved as the headgear preference.\n\nWhile trading with a follower, the helmet, hood, or circlet saved as the headgear preference is marked with a small icon. This lets you see which headgear the follower will equip when combat starts.\n\nNote: To change the headgear preference, hold the Mod Key and press left-hand equip on the selected headgear item.");
-			out.emplace("ui.outfit_sync.reequip_selection_icon.label", "Re-Equip Selection Icons");
-			out.emplace("ui.outfit_sync.reequip_selection_icon.help", "Displays an icon next to items in the trade list that are saved for re-equip.\n\nWhile trading with a follower, weapons, armor, and ammo you have saved as preferred for re-equip are marked with a small icon. This lets you see which items the mod will re-equip after the game rebuilds the follower's inventory.");
+			out.emplace("ui.outfit_sync.saved_outfit_item_icon.label", "Saved Outfit Item Icons");
+			out.emplace("ui.outfit_sync.saved_outfit_item_icon.help", "Displays an icon next to outfit items in the trade list that are saved for re-equip.\n\nWhile trading with a follower, saved outfit items are marked with a small icon. This lets you see which outfit items the mod will re-equip after the game rebuilds the follower's inventory.");
+			out.emplace("ui.hand_item_restore.saved_hand_item_icon.label", "Saved Hand Item Icons");
+			out.emplace("ui.hand_item_restore.saved_hand_item_icon.help", "Displays an icon next to weapons, shields, scrolls, and ammo saved for hand-item re-equip.\n\nWhile trading with a follower, saved right-hand, left-hand, and ammo selections are marked with a small icon. This lets you see which hand items the mod will re-equip after the game rebuilds the follower's inventory.");
 			out.emplace("ui.icon_appearance.enable_customization.label", "Icon Customization");
 			out.emplace("ui.icon_appearance.enable_customization.help", "Enables size and spacing customization for the mod icons. When disabled, icons are shown at default size and spacing.");
 			out.emplace("ui.icon_appearance.icon_size.label", "Icon Size");
@@ -467,6 +465,8 @@ namespace FEC::Localization
 			out.emplace("ui.header.spell_tome_mode", "Spell Tomes");
 			out.emplace("ui.spell_tome.enable.label", "Enable Learning");
 			out.emplace("ui.spell_tome.enable.help", "Allows followers to learn spells from tomes while trading.\n\nWhile trading with a follower, hold the Mod Key and click a spell tome to make the follower learn its spell.");
+			out.emplace("ui.spell_tome.do_not_consume.label", "Don't Consume Spell Tomes");
+			out.emplace("ui.spell_tome.do_not_consume.help", "Prevents spell tomes from being consumed when teaching spells to followers.\n\nBy default, when a follower learns a spell from a tome, the tome is consumed and removed from your inventory. When this setting is enabled, the follower still learns the spell, but the tome remains in inventory so you can teach it to other followers or keep it for yourself.");
 
 			// Runtime feedback: Spell Tome
 			out.emplace("feedback.spell_tome.learned", "{0} learned {1}.");
@@ -505,10 +505,10 @@ namespace FEC::Localization
 			out.emplace("ui.header.outfit_sync", "Outfit Sync");
 			out.emplace("ui.outfit_sync.block_outfit_reapplication.label", "Block Default Outfit Reapplication");
 			out.emplace("ui.outfit_sync.block_outfit_reapplication.help", "Prevents the game from re-dressing the follower in their default outfit.\n\nWhen loading a save, fast traveling, or entering a new area, the game can replace a follower's equipped items with their original default outfit, discarding any custom equipment you gave them. This setting blocks that replacement, so the follower stays in whatever equipment you chose.");
-			out.emplace("ui.outfit_sync.reequip_saved_items.label", "Re-Equip Saved Items");
-			out.emplace("ui.outfit_sync.reequip_saved_items.help", "Re-equips the outfit items you chose for the follower after the game strips their equipment.\n\nWhen loading a save, fast traveling, or entering a new area, the game sometimes strips a follower's equipped items entirely. Because Block Default Outfit Reapplication prevents the game from restoring the default outfit in these moments, the follower can end up wearing nothing. This setting re-equips your saved outfit selection so the follower stays dressed as you intended.");
+			out.emplace("ui.outfit_sync.reequip_saved_outfit_items.label", "Re-Equip Saved Outfit Items");
+			out.emplace("ui.outfit_sync.reequip_saved_outfit_items.help", "Re-equips the outfit items you chose for the follower after the game strips their outfit.\n\nWhen loading a save, fast traveling, or entering a new area, the game sometimes strips a follower's worn outfit items entirely. Because Block Default Outfit Reapplication prevents the game from restoring the default outfit in these moments, the follower can end up wearing nothing. This setting re-equips your saved outfit selection so the follower stays dressed as you intended.");
 			out.emplace("ui.outfit_sync.allow_external_outfit_changes.label", "Allow External Outfit Changes");
-			out.emplace("ui.outfit_sync.allow_external_outfit_changes.help", "Updates the saved outfit selection when another mod changes the follower's outfit.\n\nWhen Re-Equip Saved Items is enabled, this mod tracks what outfit you chose for the follower and re-equips it whenever the game strips their equipment. With this setting enabled, if a mod changes the follower's outfit, that change is accepted as the new saved selection and used for all future restores.\n\nWhen this setting is disabled, the mod always re-equips your manually saved outfit, ignoring changes made by other mods.");
+			out.emplace("ui.outfit_sync.allow_external_outfit_changes.help", "Updates the saved outfit selection when another mod changes the follower's outfit.\n\nWhen Re-Equip Saved Outfit Items is enabled, this mod tracks the outfit items you chose for the follower and re-equips those items whenever the game strips them. With this setting enabled, if a mod changes the follower's outfit, that change is accepted as the new saved selection and used for all future restores.\n\nWhen this setting is disabled, the mod always re-equips your manually saved outfit, ignoring changes made by other mods.");
 
 			// Equip Stability > Hidden Items
 			out.emplace("ui.header.hidden_items", "Hidden Items");
@@ -546,7 +546,9 @@ namespace FEC::Localization
 			// Equip Stability > Auto-Equip Blocking
 			out.emplace("ui.header.auto_equip_blocking", "Auto-Equip Blocking");
 			out.emplace("ui.equip_suppression.block_non_combat_auto_equip.label", "Block Non-Combat Auto-Equip");
-			out.emplace("ui.equip_suppression.block_non_combat_auto_equip.help", "Prevents followers from automatically equipping weapons, shields, or ammo outside combat.\n\nWhile changing location or fast traveling, the game can swap a follower's weapon, shield, or ammo to something you did not choose. This setting blocks those automatic equips so the follower keeps the items you selected until the next fight.");
+			out.emplace("ui.equip_suppression.block_non_combat_auto_equip.help", "Prevents followers from automatically equipping weapons, shields, scrolls, or ammo outside combat.\n\nWhile changing location or fast traveling, the game can swap a follower's weapon, shield, scroll, or ammo to something you did not choose. This setting blocks those automatic equips so the follower keeps the items you selected until the next fight.");
+			out.emplace("ui.hand_item_restore.reequip_saved_hand_items.label", "Re-Equip Saved Hand Items");
+			out.emplace("ui.hand_item_restore.reequip_saved_hand_items.help", "Re-equips the right-hand, left-hand, and ammo selections you saved for a follower after the game strips their hand items.\n\nWhen loading a save, fast traveling, or entering a new area, the game can remove a follower's equipped hand items and ammo. This setting re-equips your saved hand-item and ammo selection so the follower stays equipped with your choices outside of combat.");
 			out.emplace("ui.equip_suppression.block_best_weapon_auto_equip.label", "Block Best Weapon Auto-Equip");
 			out.emplace("ui.equip_suppression.block_best_weapon_auto_equip.help", "Stops the game from automatically equipping what it considers the best weapon on the follower during trade.\n\nWhile trading with a follower, the game can automatically equip a weapon on the follower whenever any item is transferred, whether you are giving or taking items. This can override your loadout choices within the same trade session. This setting blocks that automatic weapon equip for the rest of the trade session, letting you rearrange items without interference.");
 

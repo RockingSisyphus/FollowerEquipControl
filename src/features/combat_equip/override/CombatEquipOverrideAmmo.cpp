@@ -1,15 +1,369 @@
 #include "CombatEquipOverrideAmmo.h"
 
+#include "CombatEquipOverridePolicy.h"
 #include "CombatEquipOverrideState.h"
 #include "CombatEquipOverrideTelemetry.h"
 #include "CombatEquipOverrideUtil.h"
 
 #include "CombatEquipPreference.h"
 #include "EquipGate.h"
+#include "PluginSettings.h"
 #include "WeaponBound.h"
+
+#include <mutex>
+#include <unordered_set>
 
 namespace FEC::CombatEquipOverride::Ammo
 {
+	namespace
+	{
+		struct InventoryAmmoResult
+		{
+			RE::TESBoundObject* object{ nullptr };
+			std::int32_t count{ 0 };
+			std::size_t candidates{ 0 };
+		};
+
+		std::mutex g_pendingAmmoReequipMutex;
+		std::unordered_set<RE::FormID> g_pendingAmmoReequipActors;
+
+		[[nodiscard]] bool MarkPendingAmmoReequip(RE::FormID a_actorID)
+		{
+			if (a_actorID == 0) {
+				return false;
+			}
+
+			std::scoped_lock lock(g_pendingAmmoReequipMutex);
+			return g_pendingAmmoReequipActors.insert(a_actorID).second;
+		}
+
+		void ClearPendingAmmoReequip(RE::FormID a_actorID)
+		{
+			if (a_actorID == 0) {
+				return;
+			}
+
+			std::scoped_lock lock(g_pendingAmmoReequipMutex);
+			g_pendingAmmoReequipActors.erase(a_actorID);
+		}
+
+		struct PendingAmmoReequipClear
+		{
+			RE::FormID actorID{ 0 };
+
+			~PendingAmmoReequipClear()
+			{
+				ClearPendingAmmoReequip(actorID);
+			}
+		};
+
+		[[nodiscard]] InventoryAmmoResult FindAmmoInInventory(RE::Actor* a_actor, RE::FormID a_ammoID)
+		{
+			InventoryAmmoResult result{};
+			if (!a_actor || a_ammoID == 0) {
+				return result;
+			}
+
+			auto inv = a_actor->GetInventory([a_ammoID](RE::TESBoundObject& a_item) {
+				return a_item.GetFormID() == a_ammoID && a_item.GetFormType() == RE::FormType::Ammo;
+			});
+
+			result.candidates = inv.size();
+			if (!inv.empty() && inv.begin()->second.first > 0) {
+				result.object = inv.begin()->first;
+				result.count = inv.begin()->second.first;
+			}
+
+			return result;
+		}
+
+		[[nodiscard]] InventoryAmmoResult FindFallbackAmmo(RE::Actor* a_actor, RE::FormID a_excludeAmmoID, bool a_wantBolt)
+		{
+			InventoryAmmoResult result{};
+			if (!a_actor) {
+				return result;
+			}
+
+			auto inv = a_actor->GetInventory([a_excludeAmmoID, a_wantBolt](RE::TESBoundObject& a_item) {
+				if (a_item.GetFormID() == a_excludeAmmoID) {
+					return false;
+				}
+
+				auto* ammo = a_item.As<RE::TESAmmo>();
+				return ammo && ammo->IsBolt() == a_wantBolt;
+			});
+
+			result.candidates = inv.size();
+			for (auto& [obj, data] : inv) {
+				if (data.first > result.count) {
+					result.object = obj;
+					result.count = data.first;
+				}
+			}
+
+			return result;
+		}
+
+		[[nodiscard]] bool ValidateRangedAmmoContext(
+			RE::Actor* a_actor,
+			RE::FormID a_actorID,
+			RE::FormID a_sourceAmmoID,
+			const char* a_logPrefix,
+			bool a_trace,
+			RE::TESObjectWEAP*& a_rightWeapon)
+		{
+			a_rightWeapon = nullptr;
+
+			if (!a_actor) {
+				return false;
+			}
+
+			auto* st = a_actor->AsActorState();
+			const bool drawn = (st && st->IsWeaponDrawn());
+			const bool inCombat = a_actor->IsInCombat();
+			if (!drawn && !inCombat) {
+				if (a_trace) {
+					logger::trace(
+						"Override: {} actor={:08X} obj={:08X} reason=not_ranged_combat drawn={} inCombat={}",
+						a_logPrefix, a_actorID, a_sourceAmmoID, drawn, inCombat);
+				}
+				return false;
+			}
+
+			auto* rightForm = a_actor->GetEquippedObject(false);
+			auto* rightWeap = rightForm ? rightForm->As<RE::TESObjectWEAP>() : nullptr;
+			if (!rightWeap) {
+				if (a_trace) {
+					logger::trace(
+						"Override: {} actor={:08X} obj={:08X} reason=no_right_weapon rightForm={:08X}",
+						a_logPrefix,
+						a_actorID,
+						a_sourceAmmoID,
+						rightForm ? rightForm->GetFormID() : 0);
+				}
+				return false;
+			}
+
+			const auto weapType = rightWeap->GetWeaponType();
+			if (weapType != RE::WEAPON_TYPE::kBow && weapType != RE::WEAPON_TYPE::kCrossbow) {
+				if (a_trace) {
+					logger::trace(
+						"Override: {} actor={:08X} obj={:08X} reason=not_ranged weapType={}",
+						a_logPrefix, a_actorID, a_sourceAmmoID, static_cast<int>(weapType));
+				}
+				return false;
+			}
+
+			if (WeaponBound::IsBoundWeapon(rightWeap)) {
+				if (a_trace) {
+					logger::trace(
+						"Override: {} actor={:08X} obj={:08X} reason=bound_weapon",
+						a_logPrefix, a_actorID, a_sourceAmmoID);
+				}
+				return false;
+			}
+
+			a_rightWeapon = rightWeap;
+			return true;
+		}
+
+		void RunDeferredAmmoReequip(
+			RE::ActorHandle a_actorHandle,
+			RE::FormID a_actorID,
+			RE::FormID a_sourceAmmoID,
+			const char* a_reason)
+		{
+			const PendingAmmoReequipClear clear{ a_actorID };
+			const bool trace = spdlog::should_log(spdlog::level::trace);
+
+			auto actor = RE::Actor::LookupByHandle(a_actorHandle.native_handle());
+			if (!actor || actor->GetFormID() != a_actorID || actor->IsDeleted() || !actor->Is3DLoaded() || actor->IsDead()) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=actor_invalid",
+						a_actorID, a_sourceAmmoID);
+				}
+				return;
+			}
+
+			if (!PluginSettings::Get().combatEquipEnforcement.enableAmmoPreference) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=feature_disabled",
+						a_actorID, a_sourceAmmoID);
+				}
+				return;
+			}
+
+			if (!Policy::ShouldConsiderUnequip(actor.get(), true)) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=policy_skip",
+						a_actorID, a_sourceAmmoID);
+				}
+				return;
+			}
+
+			RE::TESObjectWEAP* rightWeap = nullptr;
+			if (!ValidateRangedAmmoContext(
+					actor.get(), a_actorID, a_sourceAmmoID, "ammo_reequip_task_skip", trace, rightWeap)) {
+				return;
+			}
+
+			const auto lastAmmo = State::GetLastAmmoOverride(a_actorID);
+			if (!lastAmmo.has_value() || *lastAmmo == 0) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=no_last_ammo",
+						a_actorID, a_sourceAmmoID);
+				}
+				return;
+			}
+
+			const auto prefID = *lastAmmo;
+			auto* currentAmmo = actor->GetCurrentAmmo();
+			const auto currentAmmoID = currentAmmo ? currentAmmo->GetFormID() : RE::FormID(0);
+			if (currentAmmoID == prefID) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=current_ammo_matches "
+						"currentAmmo={:08X} lastAmmo={:08X}",
+						a_actorID, a_sourceAmmoID, currentAmmoID, prefID);
+				}
+				return;
+			}
+
+			auto* equipManager = RE::ActorEquipManager::GetSingleton();
+			if (!equipManager) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_skip actor={:08X} obj={:08X} reason=no_equip_manager",
+						a_actorID, a_sourceAmmoID);
+				}
+				return;
+			}
+
+			const auto pref = FindAmmoInInventory(actor.get(), prefID);
+			const auto weapType = rightWeap->GetWeaponType();
+
+			if (trace) {
+				logger::trace(
+					"Override: ammo_reequip_task_eval actor={:08X} obj={:08X} "
+					"lastAmmo={:08X} currentAmmo={:08X} prefCount={} prefFound={} "
+					"weapType={} right={:08X} ({}) reason={}",
+					a_actorID,
+					a_sourceAmmoID,
+					prefID,
+					currentAmmoID,
+					pref.count,
+					pref.object != nullptr,
+					static_cast<int>(weapType),
+					rightWeap->GetFormID(),
+					rightWeap->GetName(),
+					a_reason ? a_reason : "");
+			}
+
+			if (pref.object && pref.count >= 1) {
+				Telemetry::LogAmmoReequipAttempt(actor.get(), prefID, a_reason ? a_reason : "ammo_unequip_while_ranged");
+
+				if (trace) {
+					logger::trace(
+						"Override: ammo_reequip_task_apply actor={:08X} prefID={:08X} ({}) prefCount={} queue=true",
+						a_actorID, prefID, pref.object->GetName(), pref.count);
+				}
+
+				EquipGate::ScopedBypass bypass;
+				equipManager->EquipObject(
+					actor.get(),
+					pref.object,
+					nullptr,
+					1,
+					nullptr,
+					true,
+					false,
+					false,
+					false);
+				return;
+			}
+
+			const bool wantBolt = (weapType == RE::WEAPON_TYPE::kCrossbow);
+			const auto alt = FindFallbackAmmo(actor.get(), prefID, wantBolt);
+
+			if (trace) {
+				logger::trace(
+					"Override: ammo_exhaustion_task_scan actor={:08X} prefID={:08X} prefCount={} "
+					"altAmmo={:08X} ({}) altCount={} altCandidates={}",
+					a_actorID,
+					prefID,
+					pref.count,
+					alt.object ? alt.object->GetFormID() : RE::FormID(0),
+					alt.object ? alt.object->GetName() : "NONE",
+					alt.count,
+					alt.candidates);
+			}
+
+			if (!alt.object || alt.count < 1) {
+				if (trace) {
+					logger::trace(
+						"Override: ammo_exhaustion_no_alt actor={:08X} prefID={:08X} "
+						"— no alternative ammo found, follower will be unarmed",
+						a_actorID, prefID);
+				}
+				return;
+			}
+
+			Telemetry::LogAmmoReequipAttempt(
+				actor.get(), alt.object->GetFormID(), "ammo_exhaustion_transition");
+			State::RememberLastAmmoOverride(a_actorID, alt.object->GetFormID());
+
+			EquipGate::ScopedBypass bypass;
+			equipManager->EquipObject(
+				actor.get(), alt.object, nullptr, 1, nullptr,
+				true, false, false, false);
+		}
+
+		[[nodiscard]] bool QueueDeferredAmmoReequip(
+			RE::Actor* a_actor,
+			RE::FormID a_sourceAmmoID,
+			const char* a_reason)
+		{
+			if (!a_actor || a_sourceAmmoID == 0) {
+				return false;
+			}
+
+			const auto actorID = a_actor->GetFormID();
+			if (actorID == 0) {
+				return false;
+			}
+
+			auto* taskInterface = SKSE::GetTaskInterface();
+			if (!taskInterface) {
+				if (spdlog::should_log(spdlog::level::trace)) {
+					logger::trace(
+						"Override: ammo_reequip_queue_skip actor={:08X} obj={:08X} reason=no_task_interface",
+						actorID, a_sourceAmmoID);
+				}
+				return false;
+			}
+
+			if (!MarkPendingAmmoReequip(actorID)) {
+				if (spdlog::should_log(spdlog::level::trace)) {
+					logger::trace(
+						"Override: ammo_reequip_queue_skip actor={:08X} obj={:08X} reason=already_pending",
+						actorID, a_sourceAmmoID);
+				}
+				return true;
+			}
+
+			const auto actorHandle = a_actor->GetHandle();
+			taskInterface->AddTask([actorHandle, actorID, a_sourceAmmoID, a_reason]() {
+				RunDeferredAmmoReequip(actorHandle, actorID, a_sourceAmmoID, a_reason);
+			});
+
+			return true;
+		}
+	}
+
 	std::optional<Decision> DecideAmmoEquipSwap(
 		RE::Actor* a_actor,
 		RE::TESBoundObject* a_object,
@@ -144,50 +498,9 @@ namespace FEC::CombatEquipOverride::Ammo
 			return;
 		}
 
-		// Only re-equip ammo while the actor is still in ranged combat.
-		auto* st = a_actor->AsActorState();
-		const bool drawn = (st && st->IsWeaponDrawn());
-		const bool inCombat = a_actor->IsInCombat();
-		if (!drawn && !inCombat) {
-			if (trace) {
-				logger::trace(
-					"Override: ammo_unequip_skip actor={:08X} obj={:08X} reason=not_ranged_combat drawn={} inCombat={}",
-					actorID, a_object->GetFormID(), drawn, inCombat);
-			}
-			return;
-		}
-
-		auto* rightForm = a_actor->GetEquippedObject(false);
-		auto* rightWeap = rightForm ? rightForm->As<RE::TESObjectWEAP>() : nullptr;
-		if (!rightWeap) {
-			if (trace) {
-				logger::trace(
-					"Override: ammo_unequip_skip actor={:08X} obj={:08X} reason=no_right_weapon rightForm={:08X}",
-					actorID, a_object->GetFormID(),
-					rightForm ? rightForm->GetFormID() : 0);
-			}
-			return;
-		}
-		const auto weapType = rightWeap->GetWeaponType();
-		if (weapType != RE::WEAPON_TYPE::kBow && weapType != RE::WEAPON_TYPE::kCrossbow) {
-			if (trace) {
-				logger::trace(
-					"Override: ammo_unequip_skip actor={:08X} obj={:08X} reason=not_ranged weapType={}",
-					actorID, a_object->GetFormID(), static_cast<int>(weapType));
-			}
-			return;
-		}
-		if (WeaponBound::IsBoundWeapon(rightWeap)) {
-			if (trace) {
-				logger::trace(
-					"Override: ammo_unequip_skip actor={:08X} obj={:08X} reason=bound_weapon",
-					actorID, a_object->GetFormID());
-			}
-			return;
-		}
-
-		auto* equipManager = RE::ActorEquipManager::GetSingleton();
-		if (!equipManager) {
+		RE::TESObjectWEAP* rightWeap = nullptr;
+		if (!ValidateRangedAmmoContext(
+				a_actor, actorID, a_object->GetFormID(), "ammo_unequip_skip", trace, rightWeap)) {
 			return;
 		}
 
@@ -205,114 +518,20 @@ namespace FEC::CombatEquipOverride::Ammo
 			return;
 		}
 
-		const auto prefID = *lastAmmo;
-		RE::TESBoundObject* prefObj = nullptr;
-		std::int32_t prefCount = 0;
-		{
-			auto inv = a_actor->GetInventory([prefID](RE::TESBoundObject& a_item) {
-				return a_item.GetFormID() == prefID;
-			});
-			if (!inv.empty() && inv.begin()->second.first > 0) {
-				prefObj = inv.begin()->first;
-				prefCount = inv.begin()->second.first;
-			}
-		}
-
 		if (trace) {
 			logger::trace(
-				"Override: ammo_unequip_eval actor={:08X} obj={:08X} ({}) "
-				"lastAmmo={:08X} currentAmmo={:08X} prefCount={} prefFound={} "
-				"drawn={} inCombat={} weapType={} right={:08X} ({})",
+				"Override: ammo_reequip_queue actor={:08X} obj={:08X} ({}) "
+				"lastAmmo={:08X} currentAmmo={:08X} weapType={} right={:08X} ({})",
 				actorID,
 				a_object->GetFormID(),
 				a_object->GetName(),
 				*lastAmmo,
 				currentAmmoID,
-				prefCount,
-				prefObj != nullptr,
-				drawn,
-				inCombat,
-				static_cast<int>(weapType),
+				static_cast<int>(rightWeap->GetWeaponType()),
 				rightWeap->GetFormID(),
 				rightWeap->GetName());
 		}
 
-		if (prefObj) {
-			if (prefCount >= 1) {
-				Telemetry::LogAmmoReequipAttempt(a_actor, prefID, "ammo_unequip_while_ranged");
-
-				if (trace) {
-					logger::trace(
-						"Override: ammo_reequip_detail actor={:08X} prefID={:08X} ({}) prefCount={} queue=true",
-						actorID, prefID, prefObj->GetName(), prefCount);
-				}
-
-				EquipGate::ScopedBypass bypass;
-				equipManager->EquipObject(
-					a_actor,
-					prefObj,
-					nullptr,
-					1,
-					nullptr,
-					true,   // queueEquip: defer to break the sequential unequip loop
-					false,
-					false,
-					false); // applyNow=false
-				return;
-			}
-		}
-
-		// Preferred ammo is exhausted; fall back to another arrow or bolt of the same type.
-		{
-			const bool wantBolt = (weapType == RE::WEAPON_TYPE::kCrossbow);
-			auto altInv = a_actor->GetInventory(
-				[prefID, wantBolt](RE::TESBoundObject& a_item) {
-					if (a_item.GetFormID() == prefID) {
-						return false;
-					}
-					auto* ammo = a_item.As<RE::TESAmmo>();
-					return ammo && ammo->IsBolt() == wantBolt;
-				});
-
-			RE::TESBoundObject* altAmmo = nullptr;
-			std::int32_t altCount = 0;
-			for (auto& [obj, data] : altInv) {
-				if (data.first > altCount) {
-					altAmmo = obj;
-					altCount = data.first;
-				}
-			}
-
-			if (trace) {
-				logger::trace(
-					"Override: ammo_exhaustion_scan actor={:08X} prefID={:08X} prefCount={} "
-					"altAmmo={:08X} ({}) altCount={} altCandidates={}",
-					actorID,
-					prefID,
-					prefCount,
-					altAmmo ? altAmmo->GetFormID() : RE::FormID(0),
-					altAmmo ? altAmmo->GetName() : "NONE",
-					altCount,
-					altInv.size());
-			}
-
-			if (altAmmo) {
-				Telemetry::LogAmmoReequipAttempt(
-					a_actor, altAmmo->GetFormID(), "ammo_exhaustion_transition");
-				State::RememberLastAmmoOverride(actorID, altAmmo->GetFormID());
-
-				EquipGate::ScopedBypass bypass;
-				equipManager->EquipObject(
-					a_actor, altAmmo, nullptr, 1, nullptr,
-					true, false, false, false);
-			} else {
-				if (trace) {
-					logger::trace(
-						"Override: ammo_exhaustion_no_alt actor={:08X} prefID={:08X} "
-						"— no alternative ammo found, follower will be unarmed",
-						actorID, prefID);
-				}
-			}
-		}
+		(void)QueueDeferredAmmoReequip(a_actor, a_object->GetFormID(), "ammo_unequip_while_ranged");
 	}
 }

@@ -394,10 +394,10 @@ namespace FEC::EquipMode::Core
 				// plain-stack synthetic xLists are handled inside GetStrictEntryForSelection.
 
 				// When Headgear Auto-Equip is enabled, left-hand click on headgear saves or clears
-				// the combat headgear preference without equipping. Skip actors that cannot wear
-				// body armor; HeadgearAutoEquip would never use it.
+				// the combat headgear preference without equipping.
+				auto* headgearArmor = ctx.object ? ctx.object->As<RE::TESObjectARMO>() : nullptr;
 				if (PluginSettings::Get().combatEquipRestore.enableHeadgearAutoEquip && hand == Hand::kLeft &&
-				ctx.object && ctx.object->IsArmor() && ActorScope::BodyEquipAllowed(target)) {
+					headgearArmor && ActorScope::ArmorEquipAllowed(target, headgearArmor)) {
 					const auto cepCat = FEC::CombatEquip::Preference::Policy::TryClassifyCEPCategory(ctx.object, false);
 					if (cepCat.has_value() && *cepCat == CombatEquipPreference::Category::kHeadgear) {
 						const auto existing = CombatEquipPreference::GetEntry(actorID, CombatEquipPreference::Category::kHeadgear);

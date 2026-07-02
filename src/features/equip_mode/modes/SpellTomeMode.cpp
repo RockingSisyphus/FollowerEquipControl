@@ -15,7 +15,7 @@ namespace FEC::EquipMode::Modes
 	{
 		bool g_installed{ false };
 
-		void LearnNow(RE::FormID a_targetActorID, RE::FormID a_sourceActorID, RE::FormID a_bookID)
+		void LearnNow(RE::FormID a_targetActorID, RE::FormID a_sourceActorID, RE::FormID a_bookID, bool a_doNotConsumeSpellTome)
 		{
 			auto* target = RE::TESForm::LookupByID<RE::Actor>(a_targetActorID);
 			auto* source = RE::TESForm::LookupByID<RE::Actor>(a_sourceActorID);
@@ -57,7 +57,9 @@ namespace FEC::EquipMode::Modes
 			}
 			FEC::UISounds::PlaySoundByFormID(FEC::UISounds::SoundFormID::kSpellLearned);
 
-			source->RemoveItem(book, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			if (!a_doNotConsumeSpellTome) {
+				source->RemoveItem(book, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			}
 			{
 				Notifications::ToastOptions opt;
 				opt.severity = Notifications::Severity::kInfo;
@@ -130,13 +132,14 @@ namespace FEC::EquipMode::Modes
 			return false;
 		}
 
+		const bool doNotConsumeSpellTome = PluginSettings::Get().equipModeSpellTomeMode.doNotConsumeSpellTomes;
 		if (auto* taskInterface = SKSE::GetTaskInterface()) {
-			taskInterface->AddTask([targetID, sourceID, bookID]() {
-				LearnNow(targetID, sourceID, bookID);
+			taskInterface->AddTask([targetID, sourceID, bookID, doNotConsumeSpellTome]() {
+				LearnNow(targetID, sourceID, bookID, doNotConsumeSpellTome);
 			});
 		}
 
-		// Own the click; learn and consume instead of transferring.
+		// Own the click; learn instead of transferring. Consumption is controlled by settings.
 		return true;
 	}
 }

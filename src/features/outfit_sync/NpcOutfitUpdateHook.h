@@ -1,4 +1,4 @@
-// Optionally suppresses vanilla UpdateNPCOutfit during follower equipment manipulation.
+// Suppresses or observes vanilla UpdateNPCOutfit for follower outfit and hand-item refresh handling.
 // Fails open when the hook address cannot be resolved.
 
 #pragma once

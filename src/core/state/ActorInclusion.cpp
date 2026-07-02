@@ -68,6 +68,44 @@ namespace FEC::ActorInclusion
 			return s;
 		}
 
+		void StripUtf8Bom(std::string& a_value)
+		{
+			static constexpr std::string_view kUtf8Bom{ "\xEF\xBB\xBF", 3 };
+			if (a_value.size() >= kUtf8Bom.size() &&
+				std::string_view(a_value.data(), kUtf8Bom.size()) == kUtf8Bom) {
+				a_value.erase(0, kUtf8Bom.size());
+			}
+		}
+
+		[[nodiscard]] std::optional<std::size_t> FindInlineComment(std::string_view a_line)
+		{
+			for (std::size_t i = 0; i < a_line.size(); ++i) {
+				const char c = a_line[i];
+				if (c != ';' && c != '#') {
+					continue;
+				}
+
+				if (i == 0 || std::isspace(static_cast<unsigned char>(a_line[i - 1])) != 0) {
+					return i;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		[[nodiscard]] std::string NormalizeIniLine(std::string a_line)
+		{
+			StripUtf8Bom(a_line);
+			a_line = Trim(std::move(a_line));
+			StripUtf8Bom(a_line);
+
+			if (const auto comment = FindInlineComment(a_line)) {
+				a_line.erase(*comment);
+			}
+
+			return Trim(std::move(a_line));
+		}
+
 		[[nodiscard]] std::string ToLower(std::string s)
 		{
 			std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -110,6 +148,26 @@ namespace FEC::ActorInclusion
 		}
 
 		enum class SectionType { kKeyword, kNPC, kFaction };
+
+		[[nodiscard]] const char* SectionTypeLabel(SectionType a_type)
+		{
+			switch (a_type) {
+			case SectionType::kKeyword: return "Keyword";
+			case SectionType::kNPC:     return "NPC";
+			case SectionType::kFaction: return "Faction";
+			default:                    return "Unknown";
+			}
+		}
+
+		[[nodiscard]] const char* ExpectedKey(SectionType a_type)
+		{
+			switch (a_type) {
+			case SectionType::kKeyword: return "Keyword";
+			case SectionType::kNPC:     return "NPC";
+			case SectionType::kFaction: return "Faction";
+			default:                    return "?";
+			}
+		}
 
 		struct ParsedSection
 		{
@@ -229,17 +287,27 @@ namespace FEC::ActorInclusion
 			}
 
 			try {
-				const RE::FormID rawID = static_cast<RE::FormID>(std::stoul(idStr, nullptr, 16));
+				std::size_t parsedLength = 0;
+				const auto parsed = std::stoull(idStr, &parsedLength, 16);
+				if (!Trim(idStr.substr(parsedLength)).empty()) {
+					logger::warn(
+						"ActorInclusion: {} value '{}' in token '{}' contains trailing characters",
+						a_context, idStr, token);
+					return std::nullopt;
+				}
+
 				// Local IDs must exclude the mod index byte.
 				// Regular plugins use the bottom 3 bytes; ESL plugins use the bottom 12 bits.
-				if (rawID > 0x00FFFFFF) {
+				if (parsed > 0x00FFFFFFull) {
 					logger::warn(
 						"ActorInclusion: {} {:#010x} in token '{}' is larger than 0x00FFFFFF -- "
 						"it likely includes the mod index byte. Provide only the local record number "
 						"(up to 6 hex digits for regular plugins, up to 3 hex digits for ESL plugins).",
-						a_context, rawID, token);
+						a_context, parsed, token);
 					return std::nullopt;
 				}
+
+				const RE::FormID rawID = static_cast<RE::FormID>(parsed);
 				return FormIDToken{ pluginName, rawID };
 			} catch (...) {
 				logger::warn("ActorInclusion: could not parse {} value '{}' in token '{}'", a_context, idStr, token);
@@ -257,30 +325,54 @@ namespace FEC::ActorInclusion
 
 			std::optional<ParsedSection> currentSection;
 			std::string line;
+			std::size_t lineNumber = 0;
 			while (std::getline(file, line)) {
-				line = Trim(std::move(line));
-				if (line.empty() || line.front() == '#' || line.front() == ';') {
+				++lineNumber;
+				line = NormalizeIniLine(std::move(line));
+				if (line.empty()) {
 					continue;
 				}
 
-				if (line.front() == '[' && line.back() == ']') {
+				if (line.front() == '[') {
+					if (line.back() != ']') {
+						currentSection = std::nullopt;
+						logger::warn(
+							"ActorInclusion: malformed section header in {}:{} -- '{}'",
+							a_path.string(), lineNumber, line);
+						continue;
+					}
+
 					const auto secName = Trim(line.substr(1, line.size() - 2));
 					currentSection = ClassifySection(secName);
+					if (!currentSection) {
+						logger::warn(
+							"ActorInclusion: unrecognized section [{}] in {}:{}",
+							secName, a_path.string(), lineNumber);
+					}
 					continue;
 				}
 
 				if (!currentSection) {
+					logger::warn(
+						"ActorInclusion: ignored line outside a recognized section in {}:{} -- '{}'",
+						a_path.string(), lineNumber, line);
 					continue;
 				}
 
 				const auto eq = line.find('=');
 				if (eq == std::string::npos) {
+					logger::warn(
+						"ActorInclusion: ignored malformed line in {}:{} -- expected Key = Value, got '{}'",
+						a_path.string(), lineNumber, line);
 					continue;
 				}
 
 				const auto key = ToLower(Trim(line.substr(0, eq)));
 				const auto val = Trim(line.substr(eq + 1));
 				if (val.empty()) {
+					logger::warn(
+						"ActorInclusion: ignored empty value for key '{}' in {}:{}",
+						key, a_path.string(), lineNumber);
 					continue;
 				}
 
@@ -315,6 +407,11 @@ namespace FEC::ActorInclusion
 					dispatchTokens("npc", nullptr, g_pendingNPCFormIDs);
 				} else if (currentSection->type == SectionType::kFaction && key == "faction") {
 					dispatchTokens("faction", nullptr, g_pendingFactionFormIDs);
+				} else {
+					logger::warn(
+						"ActorInclusion: ignored key '{}' in {} section at {}:{} -- expected '{}'",
+						key, SectionTypeLabel(currentSection->type), a_path.string(), lineNumber,
+						ExpectedKey(currentSection->type));
 				}
 			}
 		}

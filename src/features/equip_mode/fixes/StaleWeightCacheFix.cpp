@@ -106,6 +106,11 @@ namespace FEC::EquipMode::Fixes
 
 	void StaleWeightCacheFix::Install()
 	{
+		if (!PluginSettings::Get().engineFixes.enableStaleWeightCacheFix) {
+			Uninstall();
+			return;
+		}
+
 		if (g_installed) {
 			return;
 		}

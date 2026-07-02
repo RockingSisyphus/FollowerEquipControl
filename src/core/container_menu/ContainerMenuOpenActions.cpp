@@ -4,6 +4,7 @@
 #include "CombatEquipPreference.h"
 #include "ContainerMenuDisplayHook.h"
 #include "ContainerMenuUtil.h"
+#include "HandItemRestore.h"
 #include "KnownFollowerState.h"
 #include "OutfitSnapshotRestore.h"
 
@@ -122,15 +123,16 @@ namespace FEC
 						return;
 					}
 					if (actor->IsDead()) {
-					if (spdlog::should_log(spdlog::level::trace)) {
-						logger::trace("ContainerMenuOpenActions: SKSE task skipping dead actor {:08X} ({})",
-							actorID, actor->GetName());
+						if (spdlog::should_log(spdlog::level::trace)) {
+							logger::trace("ContainerMenuOpenActions: SKSE task skipping dead actor {:08X} ({})",
+								actorID, actor->GetName());
+						}
+						return;
 					}
-					return;
-				}
 
-				// Capture the baseline so RestoreSnapshot preserves the correct outfit after later cell transitions.
-				OutfitSnapshotRestore::CaptureBaselineIfEmpty(actor);
+					// Capture the baseline so restore features preserve the correct state after later refreshes.
+					OutfitSnapshotRestore::CaptureBaselineIfEmpty(actor);
+					HandItemRestore::CaptureBaselineIfEmpty(actor);
 				});
 			}
 		});

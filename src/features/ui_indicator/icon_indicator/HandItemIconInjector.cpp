@@ -1,14 +1,14 @@
-// Hooks SkyUI InventoryListEntry.formatName to add saved outfit item icons.
+// Hooks SkyUI InventoryListEntry.formatName to add saved hand item icons.
 // Uses resolved ExtraDataList matches when possible, with base FormID fallback for
 // entries that cannot be tied to a specific instance. Separate sentinel and stash
 // members let this hook coexist with the other icon injectors through chaining.
 
-#include "OutfitSyncIconInjector.h"
+#include "HandItemIconInjector.h"
 
 #include "ContainerMenuDisplayHook.h"
 #include "ContainerMenuUtil.h"
+#include "HandItemRestore.h"
 #include "IconPositioning.h"
-#include "OutfitSnapshotRestore.h"
 #include "PluginSettings.h"
 #include "SignatureResolve.h"
 
@@ -27,19 +27,19 @@ namespace FEC
 	namespace
 	{
 		// Wrapper visibility is controlled here, not on the loadMovie target.
-		constexpr const char* kWrapperName = "fecOutfitSyncIconWrap";
+		constexpr const char* kWrapperName = "fecHandItemIconWrap";
 
 		constexpr const char* kInnerIconName = "icon";
 
-		constexpr std::int32_t kWrapperDepth = 9700;
+		constexpr std::int32_t kWrapperDepth = 9600;
 
 		constexpr const char* kIconSwfPath = "FollowerEquipControl/marked.swf";
 
 		// Sentinel on InventoryListEntry.prototype to prevent double-hooking.
-		constexpr const char* kHookedFlagMember = "__fecOutfitSyncIconHooked";
+		constexpr const char* kHookedFlagMember = "__fecHandItemIconHooked";
 
 		// Previous formatName function stashed on the prototype.
-		constexpr const char* kOriginalFormatNameMember = "__fecOutfitSyncOriginalFormatName";
+		constexpr const char* kOriginalFormatNameMember = "__fecHandItemOriginalFormatName";
 
 		bool g_installed{ false };
 		ContainerMenuDisplayHook::ListenerHandle g_postDisplayHandle{ 0 };
@@ -74,17 +74,14 @@ namespace FEC
 
 		bool g_loggedFirstHit{ false };
 
-		[[nodiscard]] bool IsOutfitIconEnabled()
-		{
-			const auto& cfg = PluginSettings::Get().outfitSync;
-			const auto& ia = PluginSettings::Get().iconAppearance;
-			return cfg.enableUpdateNpcOutfitSuppression && cfg.enableOutfitSnapshotRestore && ia.enableOutfitSyncIcon;
-		}
-
 		[[nodiscard]] bool IsFeatureEnabled()
 		{
+			const auto& cfg = PluginSettings::Get().autoEquipBlocking;
 			const auto& ia = PluginSettings::Get().iconAppearance;
-			return ia.enableIconIndicator && IsOutfitIconEnabled();
+			return ia.enableIconIndicator &&
+			       cfg.enableNonCombatEquipBlocker &&
+			       cfg.enableHandItemRestore &&
+			       ia.enableHandItemIcon;
 		}
 
 		[[nodiscard]] bool IsSkyUiPresent(const RE::GFxValue& a_root)
@@ -110,12 +107,9 @@ namespace FEC
 		[[nodiscard]] std::size_t ComputeRawSnapshotHash(RE::FormID a_actorId)
 		{
 			std::size_t h = std::hash<RE::FormID>{}(a_actorId);
-			auto addEntry = [&](RE::FormID a_baseID) {
-				h ^= std::hash<RE::FormID>{}(a_baseID) + 0x9e3779b9u + (h << 6) + (h >> 2);
-			};
-			h ^= 0x4F535253u + (h << 6) + (h >> 2);
-			for (const auto& entry : OutfitSnapshotRestore::GetSnapshotEntries(a_actorId)) {
-				addEntry(entry.baseObjectID);
+			h ^= 0x48495253u + (h << 6) + (h >> 2);
+			for (const auto& entry : HandItemRestore::GetSnapshotEntries(a_actorId)) {
+				h ^= std::hash<RE::FormID>{}(entry.baseObjectID) + 0x9e3779b9u + (h << 6) + (h >> 2);
 			}
 			return h;
 		}
@@ -137,39 +131,35 @@ namespace FEC
 			}
 			// Prevent same-form snapshot entries from resolving to the same ExtraDataList.
 			std::unordered_map<RE::FormID, std::unordered_set<RE::ExtraDataList*>> claimedByForm;
-			auto addEntry = [&](RE::FormID a_baseObjectID, const std::optional<InstanceSignature>& a_signature) {
-				if (a_baseObjectID == 0) {
-					return;
+			for (const auto& entry : HandItemRestore::GetSnapshotEntries(target->GetFormID())) {
+				if (entry.baseObjectID == 0) {
+					continue;
 				}
-				auto* baseObj = RE::TESForm::LookupByID<RE::TESBoundObject>(a_baseObjectID);
+				auto* baseObj = RE::TESForm::LookupByID<RE::TESBoundObject>(entry.baseObjectID);
 				if (!baseObj) {
-					return;
+					continue;
 				}
 
 				// Resolve even plain-item signatures; empty StableIdentity still allows worn-state tiebreaks.
-				if (a_signature.has_value()) {
-					auto& claimed = claimedByForm[a_baseObjectID];
+				if (entry.signature.has_value()) {
+					auto& claimed = claimedByForm[entry.baseObjectID];
 					const auto resolved = claimed.empty()
 						? SignatureResolve::Resolve(
-							target.get(), baseObj, *a_signature,
+							target.get(), baseObj, *entry.signature,
 							std::nullopt, SignatureResolve::Policy::kIdentityOnly)
 						: SignatureResolve::Resolve(
-							target.get(), baseObj, *a_signature,
+							target.get(), baseObj, *entry.signature,
 							std::nullopt, SignatureResolve::Policy::kIdentityOnly,
 							claimed);
 					if (resolved.HasXList()) {
 						claimed.insert(resolved.xList);
 						result.xLists.insert(resolved.xList);
-						return;
+						continue;
 					}
 				}
 
 				// Base FormID fallback when no exact instance can be resolved.
-				result.baseOnly.insert(a_baseObjectID);
-			};
-
-			for (const auto& entry : OutfitSnapshotRestore::GetSnapshotEntries(target->GetFormID())) {
-				addEntry(entry.baseObjectID, entry.signature);
+				result.baseOnly.insert(entry.baseObjectID);
 			}
 			return result;
 		}
@@ -244,8 +234,8 @@ namespace FEC
 					}
 				}
 
-				item->obj.SetMember("__fecOSMatch", RE::GFxValue(match));
-				item->obj.SetMember("__fecOSGen",   RE::GFxValue(static_cast<double>(a_gen)));
+				item->obj.SetMember("__fecHIMatch", RE::GFxValue(match));
+				item->obj.SetMember("__fecHIGen",   RE::GFxValue(static_cast<double>(a_gen)));
 			}
 		}
 
@@ -272,7 +262,7 @@ namespace FEC
 							a_params.args, a_params.argCount)) {
 						static bool loggedFailure = false;
 						if (!loggedFailure) {
-							logger::warn("OutfitSyncIconInjector: failed to invoke chained formatName");
+							logger::warn("HandItemIconInjector: failed to invoke chained formatName");
 							loggedFailure = true;
 						}
 					}
@@ -309,8 +299,8 @@ namespace FEC
 					{ std::lock_guard lk(g_snapshotMutex); curGen = g_stampGeneration; }
 
 					RE::GFxValue matchVal, genVal;
-					entryObject.GetMember("__fecOSMatch", std::addressof(matchVal));
-					entryObject.GetMember("__fecOSGen",   std::addressof(genVal));
+					entryObject.GetMember("__fecHIMatch", std::addressof(matchVal));
+					entryObject.GetMember("__fecHIGen",   std::addressof(genVal));
 
 					const bool stampValid = matchVal.IsBool() && genVal.IsNumber() &&
 						static_cast<std::uint64_t>(genVal.GetNumber()) == curGen;
@@ -319,7 +309,7 @@ namespace FEC
 						auto menu = ContainerMenuUtil::GetOpenContainerMenu();
 						auto* itemList = menu ? ContainerMenuUtil::GetItemList(menu.get()) : nullptr;
 						StampAllSnapshotMatches(itemList, curGen);
-						entryObject.GetMember("__fecOSMatch", std::addressof(matchVal));
+						entryObject.GetMember("__fecHIMatch", std::addressof(matchVal));
 					}
 
 					if (matchVal.IsBool()) {
@@ -328,7 +318,7 @@ namespace FEC
 				}
 
 				if (!g_loggedFirstHit) {
-					logger::trace("OutfitSyncIconInjector: formatName hit, "
+					logger::trace("HandItemIconInjector: formatName hit, "
 								  "entryFormId={:08X} text='{}' match={}",
 						entryFormId, entryText, isMatch);
 					g_loggedFirstHit = true;
@@ -346,7 +336,7 @@ namespace FEC
 							std::addressof(wrapper), kWrapperName, kWrapperDepth)) {
 						static bool loggedCreate = false;
 						if (!loggedCreate) {
-							logger::warn("OutfitSyncIconInjector: CreateEmptyMovieClip (wrapper) failed");
+							logger::warn("HandItemIconInjector: CreateEmptyMovieClip (wrapper) failed");
 							loggedCreate = true;
 						}
 						return;
@@ -356,7 +346,7 @@ namespace FEC
 					if (!wrapper.CreateEmptyMovieClip(std::addressof(innerIcon), kInnerIconName, 1)) {
 						static bool loggedInner = false;
 						if (!loggedInner) {
-							logger::warn("OutfitSyncIconInjector: CreateEmptyMovieClip (inner) failed");
+							logger::warn("HandItemIconInjector: CreateEmptyMovieClip (inner) failed");
 							loggedInner = true;
 						}
 						return;
@@ -374,7 +364,7 @@ namespace FEC
 
 					static bool loggedLoad = false;
 					if (!loggedLoad) {
-						logger::trace("OutfitSyncIconInjector: wrapper+icon created, "
+						logger::trace("HandItemIconInjector: wrapper+icon created, "
 									  "loadMovie('{}') queued", kIconSwfPath);
 						loggedLoad = true;
 					}
@@ -387,7 +377,10 @@ namespace FEC
 					wrapper.SetMember("_height", RE::GFxValue(IconPositioning::IconSize()));
 					wrapper.SetMember("_y", RE::GFxValue(std::floor((entryHeight - IconPositioning::IconSize()) * 0.5)));
 					wrapper.SetMember("_x", RE::GFxValue(
-						IconPositioning::FindIconInsertX(*a_params.thisPtr, entryField, {"fecCombatIconWrap", "fecEquipIconWrap"})));
+						IconPositioning::FindIconInsertX(
+							*a_params.thisPtr,
+							entryField,
+							{"fecCombatIconWrap", "fecEquipIconWrap", "fecOutfitSyncIconWrap"})));
 					wrapper.SetMember("_visible", RE::GFxValue(true));
 				} else {
 					wrapper.SetMember("_visible", RE::GFxValue(false));
@@ -411,7 +404,7 @@ namespace FEC
 				"_global.InventoryListEntry.prototype");
 
 			if (!proto.IsObject()) {
-				logger::trace("OutfitSyncIconInjector: InventoryListEntry.prototype not found");
+				logger::trace("HandItemIconInjector: InventoryListEntry.prototype not found");
 				return;
 			}
 
@@ -422,7 +415,7 @@ namespace FEC
 
 			RE::GFxValue origFn;
 			if (!proto.GetMember("formatName", std::addressof(origFn)) || !origFn.IsObject()) {
-				logger::warn("OutfitSyncIconInjector: formatName not found on prototype");
+				logger::warn("HandItemIconInjector: formatName not found on prototype");
 				return;
 			}
 			proto.SetMember(kOriginalFormatNameMember, origFn);
@@ -437,7 +430,7 @@ namespace FEC
 
 			proto.SetMember(kHookedFlagMember, RE::GFxValue(true));
 
-			logger::trace("OutfitSyncIconInjector: hooked formatName on InventoryListEntry.prototype");
+			logger::trace("HandItemIconInjector: hooked formatName on InventoryListEntry.prototype");
 		}
 
 		// No-op handler used to suppress onItemHighlightChange during InvalidateData.
@@ -561,7 +554,7 @@ namespace FEC
 
 	}
 
-	void OutfitSyncIconInjector::Install()
+	void HandItemIconInjector::Install()
 	{
 		if (g_installed) {
 			return;
@@ -593,10 +586,10 @@ namespace FEC
 		});
 
 		g_installed = true;
-		logger::trace("OutfitSyncIconInjector: installed");
+		logger::trace("HandItemIconInjector: installed");
 	}
 
-	void OutfitSyncIconInjector::Uninstall()
+	void HandItemIconInjector::Uninstall()
 	{
 		if (!g_installed) {
 			return;
@@ -617,10 +610,10 @@ namespace FEC
 			g_snapshotBaseOnly.clear();
 		}
 		g_installed = false;
-		logger::trace("OutfitSyncIconInjector: uninstalled");
+		logger::trace("HandItemIconInjector: uninstalled");
 	}
 
-	void OutfitSyncIconInjector::NotifyEquipChanged() noexcept
+	void HandItemIconInjector::NotifyEquipChanged() noexcept
 	{
 		// Raw hash ignores worn-state and signatures. Same-form swaps can change the
 		// resolved xList without changing baseObjectID, so force a rebuild.

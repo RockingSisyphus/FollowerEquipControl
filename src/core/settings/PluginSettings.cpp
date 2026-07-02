@@ -318,14 +318,8 @@ namespace FEC::PluginSettings
 			if (auto v = GetValue(ini, "actorscope", "includeinclusionactors"); v) {
 				out.includeInclusionActors = ParseBool(*v, out.includeInclusionActors);
 			}
-			if (auto v = GetValue(ini, "actorscope", "includenonhumanoidinclusionactors"); v) {
-				out.includeNonHumanoidInclusionActors = ParseBool(*v, out.includeNonHumanoidInclusionActors);
-			}
 			if (auto v = GetValue(ini, "actorscope", "includeplayersummons"); v) {
 				out.includePlayerSummons = ParseBool(*v, out.includePlayerSummons);
-			}
-			if (auto v = GetValue(ini, "actorscope", "includenonhumanoidsummons"); v) {
-				out.includeNonHumanoidSummons = ParseBool(*v, out.includeNonHumanoidSummons);
 			}
 		}
 
@@ -435,6 +429,9 @@ namespace FEC::PluginSettings
 			if (auto v = GetValue(ini, "iconappearance", "enableoutfitsyncicon"); v) {
 				out.enableOutfitSyncIcon = ParseBool(*v, out.enableOutfitSyncIcon);
 			}
+			if (auto v = GetValue(ini, "iconappearance", "enablehanditemicon"); v) {
+				out.enableHandItemIcon = ParseBool(*v, out.enableHandItemIcon);
+			}
 			if (auto v = GetValue(ini, "iconappearance", "enablecustomization"); v) {
 				out.enableCustomization = ParseBool(*v, out.enableCustomization);
 			}
@@ -520,6 +517,9 @@ namespace FEC::PluginSettings
 		{
 			if (auto v = GetValue(ini, "equipmodespelltomemode", "enablespelltomemode"); v) {
 				out.enableSpellTomeMode = ParseBool(*v, out.enableSpellTomeMode);
+			}
+			if (auto v = GetValue(ini, "equipmodespelltomemode", "donotconsumespelltomes"); v) {
+				out.doNotConsumeSpellTomes = ParseBool(*v, out.doNotConsumeSpellTomes);
 			}
 		}
 
@@ -630,6 +630,9 @@ namespace FEC::PluginSettings
 		{
 			if (auto v = GetValue(ini, "autoequipblocking", "enablenoncombatequipblocker"); v) {
 				out.enableNonCombatEquipBlocker = ParseBool(*v, out.enableNonCombatEquipBlocker);
+			}
+			if (auto v = GetValue(ini, "autoequipblocking", "enablehanditemrestore"); v) {
+				out.enableHandItemRestore = ParseBool(*v, out.enableHandItemRestore);
 			}
 			if (auto v = GetValue(ini, "autoequipblocking", "enablebestweaponautoequipsuppressor"); v) {
 				out.enableBestWeaponAutoEquipSuppressor = ParseBool(*v, out.enableBestWeaponAutoEquipSuppressor);
@@ -837,22 +840,10 @@ namespace FEC::PluginSettings
 				"; Default: true\n"
 				"IncludeInclusionActors={}\n"
 				"\n"
-				"; Allows non-humanoid inclusion actors to receive the full equip feature set.\n"
-				"; When disabled, hand-only races (draugr, skeletons, falmer) are limited to\n"
-				"; weapons and shields; full creatures are blocked from body-slot armor equip.\n"
-				"; Default: false\n"
-				"IncludeNonHumanoidInclusionActors={}\n"
-				"\n"
 				"; Includes player-commanded actors (conjured summons, dead thralls, reanimated\n"
 				"; corpses, mounts) in the mod scope. When disabled, these actors are ignored.\n"
 				"; Default: true\n"
 				"IncludePlayerSummons={}\n"
-				"\n"
-				"; Allows non-humanoid player-commanded actors to receive the full equip feature set.\n"
-				"; When disabled, full creatures are excluded from the mod entirely; hand-only\n"
-				"; races (draugr, skeletons, falmer) are limited to weapons and shields.\n"
-				"; Default: false\n"
-				"IncludeNonHumanoidSummons={}\n"
 				"\n"
 				"\n"
 				"[QuickTrade]\n"
@@ -975,7 +966,7 @@ namespace FEC::PluginSettings
 				"\n"
 				"[IconAppearance]\n"
 				"\n"
-				"; Master toggle for mod icons (CombatEquipIcon, HeadgearIcon, OutfitSyncIcon).\n"
+				"; Master toggle for mod icons (CombatEquipIcon, HeadgearIcon, OutfitSyncIcon, HandItemIcon).\n"
 				"; When disabled, no mod icons are shown next to item names in the trade menu.\n"
 				"; Default: true\n"
 				"EnableIconIndicator={}\n"
@@ -988,9 +979,13 @@ namespace FEC::PluginSettings
 				"; Default: true\n"
 				"EnableHeadgearIcon={}\n"
 				"\n"
-				"; Displays an icon next to items in the trade list that are part of the saved outfit snapshot.\n"
+				"; Displays an icon next to armor and clothing saved for outfit restore.\n"
 				"; Default: true\n"
 				"EnableOutfitSyncIcon={}\n"
+				"\n"
+				"; Displays an icon next to weapons, shields, scrolls, and ammo saved for hand-item restore.\n"
+				"; Default: true\n"
+				"EnableHandItemIcon={}\n"
 				"\n"
 				"; Master toggle for icon customization (IconSize, GapAfterText, GapAfterIcon, FecIconSpacing).\n"
 				"; When disabled, icon sizes and spacing use built-in defaults.\n"
@@ -1106,6 +1101,10 @@ namespace FEC::PluginSettings
 				"; Default: true\n"
 				"EnableSpellTomeMode={}\n"
 				"\n"
+				"; Prevents spell tomes from being consumed when teaching spells to followers.\n"
+				"; Default: false\n"
+				"DoNotConsumeSpellTomes={}\n"
+				"\n"
 				"\n"
 				"[CombatEquipPreference]\n"
 				"\n"
@@ -1188,7 +1187,7 @@ namespace FEC::PluginSettings
 				"; Master toggle for all non-playable item handling (Armor, Weapon, Ammo).\n"
 				"; When disabled, all three handling modes are skipped for followers.\n"
 				"; Default: true\n"
-				"NonPlayableItems={}\n"
+				"EnableNonPlayableItems={}\n"
 				"\n"
 				"; Removes non-playable armor from the follower's inventory when you open trade.\n"
 				"; Warning: May conflict with mods that use non-playable armor pieces for internal purposes.\n"
@@ -1240,20 +1239,24 @@ namespace FEC::PluginSettings
 				"EnablePreventCombatLoot={}\n"
 				"\n"
 				"; Stops followers from looting weapons and ammo from containers and corpses.\n"
-				"; Default: true\n"
+				"; Default: false\n"
 				"EnablePreventContainerLoot={}\n"
 				"\n"
 				"; Stops followers from picking up loose items from the ground.\n"
-				"; Default: true\n"
+				"; Default: false\n"
 				"EnablePreventPickupObject={}\n"
 				"\n"
 				"\n"
 				"[AutoEquipBlocking]\n"
 				"\n"
-				"; Prevents followers from automatically equipping weapons, shields, or ammo outside combat\n"
+				"; Prevents followers from automatically equipping weapons, shields, scrolls, or ammo outside combat\n"
 				"; (e.g. after fast travel or location change).\n"
 				"; Default: true\n"
 				"EnableNonCombatEquipBlocker={}\n"
+				"\n"
+				"; Re-equips the right-hand, left-hand, and ammo selections you saved for a follower after the game strips their hand items outside of combat.\n"
+				"; Default: true\n"
+				"EnableHandItemRestore={}\n"
 				"\n"
 				"; Stops the game from automatically equipping what it considers the best weapon\n"
 				"; on the follower during trade.\n"
@@ -1387,9 +1390,7 @@ namespace FEC::PluginSettings
 				defaults.logging.logLevel,
 				boolStr(defaults.actorScope.affectFormerFollowers),
 				boolStr(defaults.actorScope.includeInclusionActors),
-				boolStr(defaults.actorScope.includeNonHumanoidInclusionActors),
 				boolStr(defaults.actorScope.includePlayerSummons),
-				boolStr(defaults.actorScope.includeNonHumanoidSummons),
 				boolStr(defaults.quickTrade.enableQuickTrade),
 				boolStr(defaults.quickTrade.enableQuickTradeForFollowers),
 				boolStr(defaults.quickTrade.enableQuickTradeForFormerFollowers),
@@ -1414,6 +1415,7 @@ namespace FEC::PluginSettings
 				boolStr(defaults.iconAppearance.enableCombatEquipIcon),
 				boolStr(defaults.iconAppearance.enableHeadgearIcon),
 				boolStr(defaults.iconAppearance.enableOutfitSyncIcon),
+				boolStr(defaults.iconAppearance.enableHandItemIcon),
 				boolStr(defaults.iconAppearance.enableCustomization),
 				defaults.iconAppearance.iconSize,
 				defaults.iconAppearance.gapAfterText,
@@ -1435,6 +1437,7 @@ namespace FEC::PluginSettings
 				boolStr(defaults.equipModePoisonMode.enableStacking),
 				defaults.equipModePoisonMode.maxCharges,
 				boolStr(defaults.equipModeSpellTomeMode.enableSpellTomeMode),
+				boolStr(defaults.equipModeSpellTomeMode.doNotConsumeSpellTomes),
 				boolStr(defaults.combatEquipPreference.enableScoring),
 				boolStr(defaults.combatEquipPreference.enableInstanceAlign),
 				boolStr(defaults.combatEquipPreference.enableClearPreferencesOnUnequip),
@@ -1461,6 +1464,7 @@ namespace FEC::PluginSettings
 				boolStr(defaults.lootBlocking.enablePreventContainerLoot),
 				boolStr(defaults.lootBlocking.enablePreventPickupObject),
 				boolStr(defaults.autoEquipBlocking.enableNonCombatEquipBlocker),
+				boolStr(defaults.autoEquipBlocking.enableHandItemRestore),
 				boolStr(defaults.autoEquipBlocking.enableBestWeaponAutoEquipSuppressor),
 				boolStr(defaults.equipGate.enableEquipBlocking),
 				boolStr(defaults.equipGate.enableUnequipBlocking),
@@ -1579,14 +1583,8 @@ namespace FEC::PluginSettings
 			"Config: ActorScope.IncludeInclusionActors={}",
 			g_settings.actorScope.includeInclusionActors);
 		logger::info(
-			"Config: ActorScope.IncludeNonHumanoidInclusionActors={}",
-			g_settings.actorScope.includeNonHumanoidInclusionActors);
-		logger::info(
 			"Config: ActorScope.IncludePlayerSummons={}",
 			g_settings.actorScope.includePlayerSummons);
-		logger::info(
-			"Config: ActorScope.IncludeNonHumanoidSummons={}",
-			g_settings.actorScope.includeNonHumanoidSummons);
 		logger::info(
 			"Config: QuickTrade.EnableQuickTrade={}",
 			g_settings.quickTrade.enableQuickTrade);
@@ -1669,8 +1667,9 @@ namespace FEC::PluginSettings
 			g_settings.equipModePoisonMode.enableStacking,
 			g_settings.equipModePoisonMode.maxCharges);
 		logger::info(
-			"Config: EquipModeSpellTomeMode.EnableSpellTomeMode={} ",
-			g_settings.equipModeSpellTomeMode.enableSpellTomeMode);
+			"Config: EquipModeSpellTomeMode.EnableSpellTomeMode={} DoNotConsumeSpellTomes={} ",
+			g_settings.equipModeSpellTomeMode.enableSpellTomeMode,
+			g_settings.equipModeSpellTomeMode.doNotConsumeSpellTomes);
 		logger::info(
 			"Config: CombatEquipPreference.EnableScoring={} EnableInstanceAlign={} EnableClearPreferencesOnUnequip={} EnableClearLeftHandPreferenceOnUnequip={} ",
 			g_settings.combatEquipPreference.enableScoring,
@@ -1688,10 +1687,11 @@ namespace FEC::PluginSettings
 			g_settings.combatEquipRestore.enableHeadgearAutoEquip,
 			g_settings.combatEquipRestore.enableInfiniteAmmo);
 		logger::info(
-			"Config: IconAppearance.EnableCombatEquipIcon={} EnableHeadgearIcon={} EnableOutfitSyncIcon={} ",
+			"Config: IconAppearance.EnableCombatEquipIcon={} EnableHeadgearIcon={} EnableOutfitSyncIcon={} EnableHandItemIcon={} ",
 			g_settings.iconAppearance.enableCombatEquipIcon,
 			g_settings.iconAppearance.enableHeadgearIcon,
-			g_settings.iconAppearance.enableOutfitSyncIcon);
+			g_settings.iconAppearance.enableOutfitSyncIcon,
+			g_settings.iconAppearance.enableHandItemIcon);
 		logger::info(
 			"Config: OutfitSync.EnableUpdateNpcOutfitSuppression={} EnableOutfitSnapshotRestore={} AllowOutfitChanges={} ",
 			g_settings.outfitSync.enableUpdateNpcOutfitSuppression,
@@ -1716,8 +1716,9 @@ namespace FEC::PluginSettings
 			g_settings.lootBlocking.enablePreventContainerLoot,
 			g_settings.lootBlocking.enablePreventPickupObject);
 		logger::info(
-			"Config: AutoEquipBlocking.EnableNonCombatEquipBlocker={} EnableBestWeaponAutoEquipSuppressor={}",
+			"Config: AutoEquipBlocking.EnableNonCombatEquipBlocker={} EnableHandItemRestore={} EnableBestWeaponAutoEquipSuppressor={}",
 			g_settings.autoEquipBlocking.enableNonCombatEquipBlocker,
+			g_settings.autoEquipBlocking.enableHandItemRestore,
 			g_settings.autoEquipBlocking.enableBestWeaponAutoEquipSuppressor);
 		logger::info(
 			"Config: EquipGate.EnableEquipBlocking={} EnableUnequipBlocking={} NeverBlockTorchEquip={}",

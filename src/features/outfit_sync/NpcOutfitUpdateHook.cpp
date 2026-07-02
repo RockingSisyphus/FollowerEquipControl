@@ -2,6 +2,7 @@
 
 #include "ActorScope.h"
 #include "ContainerMenuUtil.h"
+#include "HandItemRestore.h"
 #include "OutfitSnapshotRestore.h"
 #include "PluginSettings.h"
 #include "Relocations.h"
@@ -184,6 +185,12 @@ namespace FEC
 					}
 
 					const auto& cfg = PluginSettings::Get().outfitSync;
+					if (!cfg.enableUpdateNpcOutfitSuppression) {
+						_func(a_npc, a_actor, a_unk1, a_checkDead, a_unk2, a_unk3);
+						HandItemRestore::RequestReconcileAfterMenuClose(a_actor);
+						return;
+					}
+
 					if (cfg.allowOutfitChanges && cfg.enableOutfitSnapshotRestore) {
 						// Actors with no defaultOutfit, such as Inigo, use AI-package outfit overrides.
 						// Allow vanilla to apply the package outfit, then reseed the snapshot from worn state.
@@ -197,6 +204,7 @@ namespace FEC
 							}
 							_func(a_npc, a_actor, a_unk1, a_checkDead, a_unk2, a_unk3);
 							OutfitSnapshotRestore::OnOutfitFormChanged(a_actor);
+							HandItemRestore::RequestReconcileAfterMenuClose(a_actor);
 							return;
 						}
 					}
@@ -208,6 +216,7 @@ namespace FEC
 							a_actor->GetName());
 					}
 					OutfitSnapshotRestore::OnUpdateNpcOutfitSuppressed(a_actor);
+					HandItemRestore::RequestReconcileAfterMenuClose(a_actor);
 					return;
 				}
 
@@ -224,7 +233,12 @@ namespace FEC
 
 	void NpcOutfitUpdateHook::Install()
 	{
-		if (!PluginSettings::Get().outfitSync.enableUpdateNpcOutfitSuppression) {
+		const auto& settings = PluginSettings::Get();
+		const bool needsOutfitSync = settings.outfitSync.enableUpdateNpcOutfitSuppression;
+		const bool needsHandItemRestore = settings.autoEquipBlocking.enableNonCombatEquipBlocker &&
+			settings.autoEquipBlocking.enableHandItemRestore;
+
+		if (!needsOutfitSync && !needsHandItemRestore) {
 			Uninstall();
 			return;
 		}

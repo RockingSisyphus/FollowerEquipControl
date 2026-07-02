@@ -7,6 +7,7 @@
 #include "StrictPickUtil.h"
 
 #include "CombatEquipIconInjector.h"
+#include "HandItemIconInjector.h"
 #include "OutfitSyncIconInjector.h"
 
 #include "PreferenceCapture.h"
@@ -58,6 +59,25 @@ namespace FEC::EquipMode::Core
 
 			const auto* name = a_form->GetName();
 			return name ? name : "";
+		}
+
+		[[nodiscard]] const char* SafeName(const RE::Actor* a_actor) noexcept
+		{
+			if (!a_actor) {
+				return "";
+			}
+
+			if (const auto* name = a_actor->GetName(); name && *name) {
+				return name;
+			}
+
+			if (const auto* base = a_actor->GetActorBase()) {
+				if (const auto* name = base->GetName(); name && *name) {
+					return name;
+				}
+			}
+
+			return "";
 		}
 
 
@@ -549,7 +569,7 @@ namespace FEC::EquipMode::Core
 					!ActorScope::ArmorEquipAllowed(a_target, armo)) {
 					Notifications::ToastKeyFmt("feedback.equip_mode.armor_blocked_hand_only", {}, SafeName(a_target));
 					UISounds::PlaySoundByFormID(UISounds::SoundFormID::kActivateFail);
-					return fail("bodyEquipBlockedForHandOnlyActor");
+					return fail("armorEquipBlockedForActor");
 				}
 			}
 
@@ -840,6 +860,7 @@ namespace FEC::EquipMode::Core
 
 		CombatEquipIconInjector::NotifyEquipChanged();
 		OutfitSyncIconInjector::NotifyEquipChanged();
+		HandItemIconInjector::NotifyEquipChanged();
 
 		ContainerMenuUtil::Refresh3DAndMenu(a_target);
 		LogActorHands(a_target, "StrictFromMenu-post");
@@ -856,11 +877,10 @@ namespace FEC::EquipMode::Core
 		if (a_target->IsPlayerRef() || a_target->IsDead()) {
 			return false;
 		}
-		// kHandOnly/kNone actors may not equip armor unless their scope category allows non-humanoids.
 		if (a_object->IsArmor()) {
 			if (auto* armo = a_object->As<RE::TESObjectARMO>();
 				!ActorScope::ArmorEquipAllowed(a_target, armo)) {
-				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: EquipOnlyStrictByXList result=fail (body equip blocked for actor capability)"); });
+				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: EquipOnlyStrictByXList result=fail (armor blocked for actor policy or race)"); });
 				Notifications::ToastKeyFmt("feedback.equip_mode.armor_blocked_hand_only", {}, SafeName(a_target));
 				UISounds::PlaySoundByFormID(UISounds::SoundFormID::kActivateFail);
 				return false;
@@ -897,6 +917,7 @@ namespace FEC::EquipMode::Core
 		ApplyPickAction(a_target, pick, true, ApplyLog::kNone);
 		CombatEquipIconInjector::NotifyEquipChanged();
 		OutfitSyncIconInjector::NotifyEquipChanged();
+		HandItemIconInjector::NotifyEquipChanged();
 		ContainerMenuUtil::Refresh3DAndMenu(a_target);
 		LogActorHands(a_target, "EquipOnlyStrictByXList-post");
 		LogActorObjectExtraLists(a_target, a_object, "EquipOnlyStrictByXList-post");
@@ -915,7 +936,7 @@ namespace FEC::EquipMode::Core
 		if (a_object->IsArmor()) {
 			if (auto* armo = a_object->As<RE::TESObjectARMO>();
 				!ActorScope::ArmorEquipAllowed(a_target, armo)) {
-				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: EquipOnlyBase result=fail (body equip blocked for actor capability)"); });
+				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: EquipOnlyBase result=fail (armor blocked for actor policy or race)"); });
 				return false;
 			}
 		}
@@ -1009,11 +1030,10 @@ namespace FEC::EquipMode::Core
 		if (!a_object->IsArmor() && !a_object->IsWeapon() && a_object->GetFormType() != RE::FormType::Ammo) {
 			return false;
 		}
-		// kHandOnly/kNone corpses are blocked from armor without a per-corpse toggle.
 		if (a_object->IsArmor()) {
 			if (auto* armo = a_object->As<RE::TESObjectARMO>();
 				!ActorScope::ArmorEquipAllowed(a_target, armo)) {
-				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: CorpseEquipOnly result=fail (body equip blocked for actor capability)"); });
+				LogEquipModeTraceDebug([&] { logger::debug("EquipModeTrace: CorpseEquipOnly result=fail (armor blocked for actor policy or race)"); });
 				return false;
 			}
 		}
@@ -1050,4 +1070,3 @@ namespace FEC::EquipMode::Core
 		return true;
 	}
 }
-

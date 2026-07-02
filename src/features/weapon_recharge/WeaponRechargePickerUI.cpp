@@ -12,6 +12,7 @@ namespace FEC::WeaponRecharge
 	namespace
 	{
 		constexpr double kICT_LIST = 14.0;
+		constexpr RE::FormID kReusableSoulGemKeyword = 0x000ED2F1;
 
 		std::atomic_bool g_handlersCreated{ false };
 
@@ -414,8 +415,7 @@ namespace FEC::WeaponRecharge
 			const bool sortAsc = (cfg.soulGemSortMode == PluginSettings::SoulGemSortMode::kSoulAsc);
 			std::stable_sort(entries.begin(), entries.end(), [=](const Entry& a, const Entry& b) {
 				// Soul sort priority: reusable, contained soul, capacity, black/non-black, source.
-				constexpr RE::FormID kReusableSoulGemKeyword = 0x000ED2F1;
-				auto isReusable = [&](const Entry& e) -> bool {
+				auto isReusable = [](const Entry& e) -> bool {
 					return e.gem && e.gem->HasKeywordID(kReusableSoulGemKeyword);
 				};
 				auto soulRank = [&](RE::SOUL_LEVEL s) -> int {

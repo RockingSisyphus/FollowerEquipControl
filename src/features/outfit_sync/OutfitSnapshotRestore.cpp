@@ -195,9 +195,7 @@ namespace FEC
 
 			EquipGate::ScopedBypass gateBypass;
 
-			// Skip body armor for actors that cannot equip it; restore would be ineffective
-			// and could strip armor placed by other systems.
-			if (ActorScope::BodyEquipAllowed(a_actor)) {
+			if (ActorScope::ArmorValidationAllowed(a_actor)) {
 				std::unordered_map<RE::FormID, Entry> desiredByBase;
 				desiredByBase.reserve(a_state.armorBySlot.size());
 				for (const auto& [slotBit, entry] : a_state.armorBySlot) {
@@ -215,6 +213,11 @@ namespace FEC
 					if (!armo || armo->IsShield() || !armo->GetPlayable()) {
 						if (doTrace) logger::trace("SnapshotRestore: [Armor] {:08X} — not tracked playable armor, marking missing", baseID);
 						missing.insert(baseID);
+						continue;
+					}
+					if (!ActorScope::ArmorEquipAllowed(a_actor, armo)) {
+						if (doTrace) logger::trace("SnapshotRestore: [Armor] {:08X} '{}' — not valid for actor race, skipping",
+							baseID, FormName(armo));
 						continue;
 					}
 					if (!InventoryHasItem(a_actor, armo, entry.signature)) {
@@ -381,9 +384,9 @@ namespace FEC
 				}
 				return false;
 			}
-			if (!ActorScope::BodyEquipAllowed(a_actor)) {
+			if (!ActorScope::ArmorValidationAllowed(a_actor)) {
 				if (spdlog::should_log(spdlog::level::trace)) {
-					logger::trace("SnapshotRestore: BodyEquipAllowed=false for {:08X}, no reseed check",
+					logger::trace("SnapshotRestore: armor systems disabled for {:08X}, no reseed check",
 						a_actor ? a_actor->GetFormID() : 0u);
 				}
 				return false;
@@ -722,8 +725,7 @@ namespace FEC
 
 		ActorState baseline{};
 
-		// Skip body armor baseline for actors that cannot equip body armor.
-		if (ActorScope::BodyEquipAllowed(a_actor)) {
+		if (ActorScope::ArmorValidationAllowed(a_actor)) {
 			std::unordered_map<std::uint32_t, RE::FormID> wornBySlot;
 			EnumerateCurrentWornArmor(a_actor, wornBySlot);
 			for (const auto& [slot, baseID] : wornBySlot) {

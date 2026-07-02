@@ -55,9 +55,7 @@ namespace FEC::PluginSettings
 	{
 		bool affectFormerFollowers{ true };
 		bool includeInclusionActors{ true };
-		bool includeNonHumanoidInclusionActors{ false };
 		bool includePlayerSummons{ true };
-		bool includeNonHumanoidSummons{ false };
 		bool operator==(const ActorScope&) const = default;
 	};
 
@@ -120,6 +118,7 @@ namespace FEC::PluginSettings
 		bool enableCombatEquipIcon{ true };
 		bool enableHeadgearIcon{ true };
 		bool enableOutfitSyncIcon{ true };
+		bool enableHandItemIcon{ true };
 		bool enableCustomization{ true };
 		double iconSize{ 12.0 };
 		double gapAfterText{ 8.0 };
@@ -161,6 +160,7 @@ namespace FEC::PluginSettings
 	struct EquipModeSpellTomeMode
 	{
 		bool enableSpellTomeMode{ true };
+		bool doNotConsumeSpellTomes{ false };
 		bool operator==(const EquipModeSpellTomeMode&) const = default;
 	};
 
@@ -219,14 +219,15 @@ namespace FEC::PluginSettings
 	struct LootBlocking
 	{
 		bool enablePreventCombatLoot{ true };
-		bool enablePreventContainerLoot{ true };
-		bool enablePreventPickupObject{ true };
+		bool enablePreventContainerLoot{ false };
+		bool enablePreventPickupObject{ false };
 		bool operator==(const LootBlocking&) const = default;
 	};
 
 	struct AutoEquipBlocking
 	{
 		bool enableNonCombatEquipBlocker{ true };
+		bool enableHandItemRestore{ true };
 		bool enableBestWeaponAutoEquipSuppressor{ true };
 		bool operator==(const AutoEquipBlocking&) const = default;
 	};

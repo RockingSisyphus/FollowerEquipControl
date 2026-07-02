@@ -3,6 +3,7 @@
 #include "PluginSettings.h"
 #include "ContainerMenuDisplayHook.h"
 #include "ContainerMenuUtil.h"
+#include "Controls.h"
 #include "KnownFollowerState.h"
 
 #include <cstdint>
@@ -58,6 +59,23 @@ namespace FEC::EquipMode::Fixes
 			return static_cast<std::int32_t>(activeSegment) == 0;
 		}
 
+		[[nodiscard]] bool IsCorpseEquipSupportedSelectedObject(RE::ContainerMenu* a_menu)
+		{
+			if (!a_menu) {
+				return false;
+			}
+
+			auto* itemList = a_menu->GetRuntimeData().itemList;
+			auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+			auto* entry = selected ? selected->data.objDesc : nullptr;
+			auto* object = entry ? entry->object : nullptr;
+			if (!object) {
+				return false;
+			}
+
+			return object->IsArmor() || object->IsWeapon() || object->GetFormType() == RE::FormType::Ammo;
+		}
+
 		[[nodiscard]] bool TrySetSelectedItemWeightEpsilon(RE::ContainerMenu* menu)
 		{
 			if (!menu) {
@@ -108,8 +126,11 @@ namespace FEC::EquipMode::Fixes
 				return true;
 			}
 
-			// GetAffectedTarget rejects dead actors, but Corpse Equip Mode still needs this fix.
-			if (PluginSettings::Get().corpseEquipMode.enable) {
+			// GetAffectedTarget rejects dead actors, but Corpse Equip Mode still needs this fix
+			// for equip-supported corpse items while the mod key is held.
+			if (Controls::IsModKeyDown() &&
+				PluginSettings::Get().corpseEquipMode.enable &&
+				IsCorpseEquipSupportedSelectedObject(menu)) {
 				auto corpse = ContainerMenuUtil::ResolveActorHandle(menu->GetTargetRefHandle());
 				if (corpse && !corpse->IsPlayerRef() && corpse->IsDead()) {
 					return true;

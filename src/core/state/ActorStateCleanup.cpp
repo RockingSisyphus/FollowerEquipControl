@@ -3,6 +3,7 @@
 #include "CombatEquipOverrideState.h"
 #include "CombatEquipPreference.h"
 #include "EquipGateTelemetry.h"
+#include "HandItemRestore.h"
 #include "HeadgearAutoEquip.h"
 #include "KnownFollowerState.h"
 #include "OutfitSnapshotRestore.h"
@@ -22,6 +23,7 @@ namespace FEC::ActorStateCleanup
 		HeadgearAutoEquip::EraseActor(a_formID);
 		PreCombatEquipRestore::EraseActor(a_formID);
 		OutfitSnapshotRestore::EraseActor(a_formID);
+		HandItemRestore::EraseActor(a_formID);
 		CombatEquipOverride::State::EraseActor(a_formID);
 		EquipGate::Telemetry::EraseActor(a_formID);
 		SpellSuppressionState::RestoreAndEraseActor(a_formID);

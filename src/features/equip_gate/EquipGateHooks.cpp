@@ -7,6 +7,7 @@
 #include "ContainerMenuUtil.h"
 #include "EquipGateCore.h"
 #include "EquipGateTelemetry.h"
+#include "HandItemRestore.h"
 #include "InventoryUtil.h"
 #include "NonCombatEquipBlocker.h"
 #include "ActorScope.h"
@@ -14,6 +15,7 @@
 #include "OutfitSnapshotRestore.h"
 #include "PluginSettings.h"
 #include "Relocations.h"
+#include "WeaponBound.h"
 
 #include <Windows.h>
 
@@ -82,6 +84,74 @@ namespace FEC::EquipGate::Hooks
 			}
 
 			return a_vanillaSlot;
+		}
+
+		[[nodiscard]] bool IsShield(RE::TESBoundObject* a_object)
+		{
+			auto* armor = a_object ? a_object->As<RE::TESObjectARMO>() : nullptr;
+			return armor && armor->IsShield();
+		}
+
+		[[nodiscard]] bool IsTrackableHandItemOrAmmo(RE::TESBoundObject* a_object)
+		{
+			if (!a_object) {
+				return false;
+			}
+
+			const auto formType = a_object->GetFormType();
+			if (formType == RE::FormType::Ammo ||
+				formType == RE::FormType::Scroll) {
+				return true;
+			}
+
+			if (a_object->IsWeapon()) {
+				return !WeaponBound::IsWeaponAndBound(a_object);
+			}
+
+			return IsShield(a_object);
+		}
+
+		[[nodiscard]] bool ShouldRequestHandItemReconcile(
+			RE::Actor* a_actor,
+			RE::TESBoundObject* a_object,
+			std::uint32_t a_bypassDepth)
+		{
+			if (a_bypassDepth != 0) {
+				return false;
+			}
+			if (ContainerMenuUtil::IsContainerMenuOpen()) {
+				return false;
+			}
+			if (!a_actor || a_actor->IsPlayerRef() || a_actor->IsDead()) {
+				return false;
+			}
+			if (!ActorScope::IsAffectedFollower(a_actor)) {
+				return false;
+			}
+			auto* st = a_actor->AsActorState();
+			if ((st && st->IsWeaponDrawn()) || a_actor->IsInCombat()) {
+				return false;
+			}
+			return IsTrackableHandItemOrAmmo(a_object);
+		}
+
+		void RequestHandItemReconcileAfterAttempt(
+			RE::Actor* a_actor,
+			RE::TESBoundObject* a_object,
+			std::uint32_t a_bypassDepth,
+			const char* a_reason)
+		{
+			if (!ShouldRequestHandItemReconcile(a_actor, a_object, a_bypassDepth)) {
+				return;
+			}
+			if (spdlog::should_log(spdlog::level::trace)) {
+				logger::trace(
+					"EquipGate: requesting HandItemRestore reconcile after {} actor={:08X} obj={:08X}",
+					a_reason ? a_reason : "attempt",
+					a_actor ? a_actor->GetFormID() : 0,
+					a_object ? a_object->GetFormID() : 0);
+			}
+			HandItemRestore::RequestReconcile(a_actor);
 		}
 
 		class ActorEquipManagerEquipObjectHook
@@ -209,7 +279,7 @@ namespace FEC::EquipGate::Hooks
 		const bool aiDriven = (bypassDepth == 0);
 		auto* st = a_actor ? a_actor->AsActorState() : nullptr;
 		const bool drawn = (st && st->IsWeaponDrawn());
-		const bool trackableObject = a_object && (a_object->IsWeapon() || a_object->IsArmor() || a_object->GetFormType() == RE::FormType::Ammo);
+		const bool trackableObject = a_object && (a_object->IsWeapon() || a_object->IsArmor() || a_object->GetFormType() == RE::FormType::Ammo || a_object->GetFormType() == RE::FormType::Scroll);
 		const bool isWeapon = a_object && a_object->IsWeapon();
 		const auto* equippedRight = a_actor ? a_actor->GetEquippedObject(false) : nullptr;
 		const auto* equippedLeft = a_actor ? a_actor->GetEquippedObject(true) : nullptr;
@@ -263,6 +333,7 @@ namespace FEC::EquipGate::Hooks
 				a_queueEquip,
 				a_forceEquip,
 				a_applyNow);
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "suppressed_auto");
 			return;
 		}
 
@@ -275,6 +346,7 @@ namespace FEC::EquipGate::Hooks
 					a_object ? a_object->GetFormID() : 0,
 					a_object ? a_object->GetName() : "NONE");
 			}
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "suppressed_noncombat");
 			return;
 		}
 
@@ -304,6 +376,7 @@ namespace FEC::EquipGate::Hooks
 						a_queueEquip,
 						a_forceEquip,
 						a_applyNow);
+					RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "blocked_impl");
 					return;
 
 				case Action::kSwapToPreferred: {
@@ -332,6 +405,7 @@ namespace FEC::EquipGate::Hooks
 						applyNow2);
 					_func(a_this, a_actor, pref, implDecision->preferred.extraData, countToUse, slotToUse, queue, force, a_playSounds, applyNow2);
 
+					RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "swap_impl");
 					return;
 				}
 
@@ -360,6 +434,7 @@ namespace FEC::EquipGate::Hooks
 					a_applyNow);
 				_func(a_this, a_actor, a_object, a_extraData, a_count, a_slot, a_queueEquip, a_forceEquip, a_playSounds, a_applyNow);
 
+				RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "allowed_refresh_equipped");
 				return;
 			}
 
@@ -385,6 +460,7 @@ namespace FEC::EquipGate::Hooks
 						a_actor ? a_actor->GetFormID() : 0,
 						a_object ? a_object->GetFormID() : 0);
 				}
+				RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "permit_one_shot");
 				return;
 			}
 
@@ -411,6 +487,7 @@ namespace FEC::EquipGate::Hooks
 				a_queueEquip,
 				a_forceEquip,
 				a_applyNow);
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "blocked_gate");
 			return;
 		}
 
@@ -427,6 +504,7 @@ namespace FEC::EquipGate::Hooks
 			a_forceEquip,
 			a_applyNow);
 		_func(a_this, a_actor, a_object, a_extraData, a_count, a_slot, a_queueEquip, a_forceEquip, a_playSounds, a_applyNow);
+		RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "allowed_vanilla");
 
 		if (aiDriven && a_actor && a_object && a_object->IsArmor()) {
 			FEC::OutfitSnapshotRestore::OnExternalArmorEquip(a_actor);
@@ -549,6 +627,7 @@ namespace FEC::EquipGate::Hooks
 				ScopedBypass bypass2;
 				FEC::CombatEquipOverride::OnUnequipObject(a_actor, a_object, aiDriven);
 			}
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "allowed_swap_finalize");
 			return result;
 		}
 
@@ -584,6 +663,7 @@ namespace FEC::EquipGate::Hooks
 				ScopedBypass bypass2;
 				FEC::CombatEquipOverride::OnUnequipObject(a_actor, a_object, aiDriven);
 			}
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "permit_one_shot");
 			return result;
 		}
 
@@ -612,6 +692,7 @@ namespace FEC::EquipGate::Hooks
 						a_forceEquip,
 						a_applyNow,
 						a_slotToReplace);
+					RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "blocked_impl");
 					return false;
 				case Action::kAllowVanilla:
 					break;
@@ -644,6 +725,7 @@ namespace FEC::EquipGate::Hooks
 				a_forceEquip,
 				a_applyNow,
 				a_slotToReplace);
+			RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "blocked_gate");
 			return false;
 		}
 
@@ -677,6 +759,7 @@ namespace FEC::EquipGate::Hooks
 			ScopedBypass bypass;
 			FEC::CombatEquipOverride::OnUnequipObject(a_actor, a_object, aiDriven);
 		}
+		RequestHandItemReconcileAfterAttempt(a_actor, a_object, bypassDepth, "allowed_vanilla");
 		return result;
 	}
 

@@ -81,6 +81,11 @@ namespace FEC::ContainerLootBlocker
 
 	void Install()
 	{
+		if (!IsEnabled()) {
+			Uninstall();
+			return;
+		}
+
 		if (g_installed.load()) {
 			return;
 		}
@@ -90,13 +95,17 @@ namespace FEC::ContainerLootBlocker
 			return;
 		}
 
+		if (!IsEnabled()) {
+			return;
+		}
+
 		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_TESObjectCONT[0] };
 		g_origAddr = vtbl.write_vfunc(Relocations::kTESObjectCONT_ActivateVfuncIndex,
 			reinterpret_cast<std::uintptr_t>(Thunk));
 		g_origFunc = g_origAddr;
 
 		g_installed.store(true);
-		logger::info("ContainerLootBlocker: installed (TESObjectCONT::Activate vtable hook, enabled={})", IsEnabled());
+		logger::info("ContainerLootBlocker: installed (TESObjectCONT::Activate vtable hook)");
 	}
 
 	void Uninstall()
@@ -111,13 +120,22 @@ namespace FEC::ContainerLootBlocker
 		}
 
 		REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_TESObjectCONT[0] };
-		auto current = vtbl.write_vfunc(Relocations::kTESObjectCONT_ActivateVfuncIndex, g_origAddr);
-		if (current != reinterpret_cast<std::uintptr_t>(Thunk)) {
-			// Another plugin owns the slot now; leave it installed.
-			vtbl.write_vfunc(Relocations::kTESObjectCONT_ActivateVfuncIndex, current);
-			logger::warn("ContainerLootBlocker: uninstall skipped (vtable slot modified by another plugin)");
+		if (!vtbl.address()) {
+			logger::warn("ContainerLootBlocker: uninstall skipped (TESObjectCONT vtable address not found)");
+			return;
 		}
 
+		const auto idx = Relocations::kTESObjectCONT_ActivateVfuncIndex;
+		const auto thunkAddr = reinterpret_cast<std::uintptr_t>(Thunk);
+		auto* const slot = reinterpret_cast<std::uintptr_t*>(vtbl.address() + (idx * sizeof(std::uintptr_t)));
+		const auto current = *slot;
+		if (current != thunkAddr) {
+			logger::warn("ContainerLootBlocker: uninstall skipped (vtable slot modified by another plugin)");
+			return;
+		}
+
+		(void)vtbl.write_vfunc(idx, g_origAddr);
+		g_origAddr = 0;
 		g_installed.store(false);
 	}
 }

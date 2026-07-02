@@ -225,6 +225,12 @@ namespace FEC::QuickTrade
 
 		bool g_sinkInstalled{ false };
 
+		[[nodiscard]] bool IsEnabled() noexcept
+		{
+			const auto& settings = PluginSettings::Get();
+			return settings.core.enableMod && settings.quickTrade.enableQuickTrade;
+		}
+
 		[[nodiscard]] bool IsModifierHeld()
 		{
 			// A non-zero setting is read live; sentinel 0 uses cached Sprint binding.
@@ -313,6 +319,11 @@ namespace FEC::QuickTrade
 
 	void Install()
 	{
+		if (!IsEnabled()) {
+			Uninstall();
+			return;
+		}
+
 		// Do not call ClearPseudoSession here: Install also runs on settings-apply.
 		// Save/load closes menus naturally; missed closes are handled on the next Activate press.
 
@@ -401,6 +412,13 @@ namespace FEC::QuickTrade
 		}
 
 		auto* vtable = *reinterpret_cast<std::uintptr_t**>(activateHandler);
+		const auto thunkAddr = reinterpret_cast<std::uintptr_t>(&HookedProcessButton);
+		if (vtable[4] != thunkAddr) {
+			logger::warn("QuickTrade: uninstall skipped (ActivateHandler slot modified by another plugin)");
+			ClearPseudoSession();
+			return;
+		}
+
 		DWORD oldProtect;
 		if (VirtualProtect(&vtable[4], sizeof(void*), PAGE_READWRITE, &oldProtect)) {
 			vtable[4] = reinterpret_cast<std::uintptr_t>(g_originalProcessButton);

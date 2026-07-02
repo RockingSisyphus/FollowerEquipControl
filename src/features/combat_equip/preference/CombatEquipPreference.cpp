@@ -409,8 +409,8 @@ namespace FEC
 			return;
 		}
 
-		// Seed headgear independently of melee preference, but only when body armor is allowed.
-		if (ActorScope::BodyEquipAllowed(a_actor) && !g_store.GetEntry(actorID, Category::kHeadgear).has_value()) {
+		// Seed headgear independently of melee preference, but only when armor systems are allowed.
+		if (ActorScope::ArmorValidationAllowed(a_actor) && !g_store.GetEntry(actorID, Category::kHeadgear).has_value()) {
 			constexpr RE::BGSBipedObjectForm::BipedObjectSlot kHeadSlots[] = {
 				RE::BGSBipedObjectForm::BipedObjectSlot::kHead,
 				RE::BGSBipedObjectForm::BipedObjectSlot::kHair,

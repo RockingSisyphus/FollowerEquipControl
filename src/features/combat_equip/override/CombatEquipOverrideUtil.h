@@ -73,6 +73,12 @@ namespace FEC::CombatEquipOverride::Util
 		return EquipClass::kUnknown;
 	}
 
+	[[nodiscard]] inline bool IsNonShieldArmor(RE::TESBoundObject* a_object)
+	{
+		auto* armor = a_object ? a_object->As<RE::TESObjectARMO>() : nullptr;
+		return armor && !armor->IsShield();
+	}
+
 	[[nodiscard]] inline bool IsMeleeLeftEligible(RE::Actor* a_actor)
 	{
 		if (!a_actor) {

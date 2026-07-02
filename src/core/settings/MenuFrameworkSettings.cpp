@@ -2360,9 +2360,7 @@ namespace FEC
 			const auto& d = Defaults();
 			g_ui.draft.actorScope.affectFormerFollowers = d.actorScope.affectFormerFollowers;
 			g_ui.draft.actorScope.includeInclusionActors = d.actorScope.includeInclusionActors;
-			g_ui.draft.actorScope.includeNonHumanoidInclusionActors = d.actorScope.includeNonHumanoidInclusionActors;
 			g_ui.draft.actorScope.includePlayerSummons = d.actorScope.includePlayerSummons;
-			g_ui.draft.actorScope.includeNonHumanoidSummons = d.actorScope.includeNonHumanoidSummons;
 			g_ui.draft.quickTrade.enableQuickTrade = d.quickTrade.enableQuickTrade;
 			g_ui.draft.quickTrade.enableQuickTradeForFollowers = d.quickTrade.enableQuickTradeForFollowers;
 			g_ui.draft.quickTrade.enableQuickTradeForFormerFollowers = d.quickTrade.enableQuickTradeForFormerFollowers;
@@ -2474,47 +2472,20 @@ namespace FEC
 					"ui.actor_scope.affect_former_followers.help",
 					"DefaultAffectFormerFollowers",
 					Defaults().actorScope.affectFormerFollowers);
-
-				ConnectorBracket inclusionConnector;
 				CheckboxRow(
 					"ui.actor_scope.include_inclusion_actors.label",
 					"##IncludeInclusionActors",
 					g_ui.draft.actorScope.includeInclusionActors,
 					"ui.actor_scope.include_inclusion_actors.help",
 					"DefaultIncludeInclusionActors",
-					Defaults().actorScope.includeInclusionActors,
-					[&]() { inclusionConnector.CaptureToggleFromLastItem(); });
-				RenderDependentBlock(inclusionConnector, g_ui.draft.actorScope.includeInclusionActors, [&]() {
-					CheckboxRow(
-						"ui.actor_scope.include_non_humanoid_inclusion_actors.label",
-						"##IncludeNonHumanoidInclusionActors",
-						g_ui.draft.actorScope.includeNonHumanoidInclusionActors,
-						"ui.actor_scope.include_non_humanoid_inclusion_actors.help",
-						"DefaultIncludeNonHumanoidInclusionActors",
-						Defaults().actorScope.includeNonHumanoidInclusionActors,
-						[&]() { inclusionConnector.AddJoinFromLastItem(); });
-					SettingsItemGap();
-				});
-
-				ConnectorBracket summonsConnector;
+					Defaults().actorScope.includeInclusionActors);
 				CheckboxRow(
 					"ui.actor_scope.include_player_summons.label",
 					"##IncludePlayerSummons",
 					g_ui.draft.actorScope.includePlayerSummons,
 					"ui.actor_scope.include_player_summons.help",
 					"DefaultIncludePlayerSummons",
-					Defaults().actorScope.includePlayerSummons,
-					[&]() { summonsConnector.CaptureToggleFromLastItem(); });
-				RenderDependentBlock(summonsConnector, g_ui.draft.actorScope.includePlayerSummons, [&]() {
-					CheckboxRow(
-						"ui.actor_scope.include_non_humanoid_summons.label",
-						"##IncludeNonHumanoidSummons",
-						g_ui.draft.actorScope.includeNonHumanoidSummons,
-						"ui.actor_scope.include_non_humanoid_summons.help",
-						"DefaultIncludeNonHumanoidSummons",
-						Defaults().actorScope.includeNonHumanoidSummons,
-						[&]() { summonsConnector.AddJoinFromLastItem(); });
-				});
+					Defaults().actorScope.includePlayerSummons);
 				SettingsSectionDivider();
 			}
 
@@ -2699,7 +2670,8 @@ namespace FEC
 					const CheckboxOpt iconOpts[] = {
 						{ &g_ui.draft.iconAppearance.enableCombatEquipIcon, "ui.combat_equip.combat_preference_icon.label", "##EnableCombatEquipIcon", "ui.combat_equip.combat_preference_icon.help", "DefaultEnableCombatEquipIcon", Defaults().iconAppearance.enableCombatEquipIcon },
 						{ &g_ui.draft.iconAppearance.enableHeadgearIcon, "ui.combat_equip.headgear_preference_icon.label", "##EnableHeadgearIcon", "ui.combat_equip.headgear_preference_icon.help", "DefaultEnableHeadgearIcon", Defaults().iconAppearance.enableHeadgearIcon },
-						{ &g_ui.draft.iconAppearance.enableOutfitSyncIcon, "ui.outfit_sync.reequip_selection_icon.label", "##EnableOutfitSyncIcon", "ui.outfit_sync.reequip_selection_icon.help", "DefaultEnableOutfitSyncIcon", Defaults().iconAppearance.enableOutfitSyncIcon },
+						{ &g_ui.draft.iconAppearance.enableOutfitSyncIcon, "ui.outfit_sync.saved_outfit_item_icon.label", "##EnableOutfitSyncIcon", "ui.outfit_sync.saved_outfit_item_icon.help", "DefaultEnableOutfitSyncIcon", Defaults().iconAppearance.enableOutfitSyncIcon },
+						{ &g_ui.draft.iconAppearance.enableHandItemIcon, "ui.hand_item_restore.saved_hand_item_icon.label", "##EnableHandItemIcon", "ui.hand_item_restore.saved_hand_item_icon.help", "DefaultEnableHandItemIcon", Defaults().iconAppearance.enableHandItemIcon },
 					};
 					RenderCheckboxGroup(iconOpts, &iconConnector);
 
@@ -2932,13 +2904,32 @@ namespace FEC
 			}
 
 			if (CollapsingHeaderWithLeadingIcon("SpellTomeMode", kIconSpellTome, Localization::CStr("ui.header.spell_tome_mode"))) {
+				ConnectorBracket learningConnector;
+
 				CheckboxRow(
 					"ui.spell_tome.enable.label",
 					"##EnableSpellTomeMode",
 					g_ui.draft.equipModeSpellTomeMode.enableSpellTomeMode,
 					"ui.spell_tome.enable.help",
 					"DefaultEnableSpellTomeMode",
-					Defaults().equipModeSpellTomeMode.enableSpellTomeMode);
+					Defaults().equipModeSpellTomeMode.enableSpellTomeMode,
+					[&]() {
+						learningConnector.CaptureToggleFromLastItem();
+					});
+
+				RenderDependentBlock(learningConnector, g_ui.draft.equipModeSpellTomeMode.enableSpellTomeMode, [&]() {
+					CheckboxRow(
+						"ui.spell_tome.do_not_consume.label",
+						"##DoNotConsumeSpellTomes",
+						g_ui.draft.equipModeSpellTomeMode.doNotConsumeSpellTomes,
+						"ui.spell_tome.do_not_consume.help",
+						"DefaultDoNotConsumeSpellTomes",
+						Defaults().equipModeSpellTomeMode.doNotConsumeSpellTomes,
+						[&]() {
+							learningConnector.AddJoinFromLastItem();
+						});
+				});
+
 				SettingsSectionDivider();
 			}
 
@@ -3049,10 +3040,10 @@ namespace FEC
 				RenderDependentBlock(updateNpcOutfitConnector, g_ui.draft.outfitSync.enableUpdateNpcOutfitSuppression, [&]() {
 					ConnectorBracket snapshotConnector;
 					CheckboxRow(
-						"ui.outfit_sync.reequip_saved_items.label",
+						"ui.outfit_sync.reequip_saved_outfit_items.label",
 						"##EnableOutfitSnapshotRestore",
 						g_ui.draft.outfitSync.enableOutfitSnapshotRestore,
-						"ui.outfit_sync.reequip_saved_items.help",
+						"ui.outfit_sync.reequip_saved_outfit_items.help",
 						"DefaultEnableOutfitSnapshotRestore",
 						Defaults().outfitSync.enableOutfitSnapshotRestore,
 						[&]() {
@@ -3167,11 +3158,35 @@ namespace FEC
 			}
 
 			if (CollapsingHeaderWithLeadingIcon("AutoEquipBlocking", kIconAutoEquipBlocking, Localization::CStr("ui.header.auto_equip_blocking"))) {
-				const CheckboxOpt opts[] = {
-					{ &g_ui.draft.autoEquipBlocking.enableNonCombatEquipBlocker, "ui.equip_suppression.block_non_combat_auto_equip.label", "##EnableNonCombatEquipBlocker", "ui.equip_suppression.block_non_combat_auto_equip.help", "DefaultEnableNonCombatEquipBlocker", Defaults().autoEquipBlocking.enableNonCombatEquipBlocker },
-					{ &g_ui.draft.autoEquipBlocking.enableBestWeaponAutoEquipSuppressor, "ui.equip_suppression.block_best_weapon_auto_equip.label", "##EnableBestWeaponAutoEquipSuppressor", "ui.equip_suppression.block_best_weapon_auto_equip.help", "DefaultEnableBestWeaponAutoEquipSuppressor", Defaults().autoEquipBlocking.enableBestWeaponAutoEquipSuppressor },
-				};
-				RenderCheckboxGroup(opts);
+				ConnectorBracket nonCombatConnector;
+				CheckboxRow(
+					"ui.equip_suppression.block_non_combat_auto_equip.label",
+					"##EnableNonCombatEquipBlocker",
+					g_ui.draft.autoEquipBlocking.enableNonCombatEquipBlocker,
+					"ui.equip_suppression.block_non_combat_auto_equip.help",
+					"DefaultEnableNonCombatEquipBlocker",
+					Defaults().autoEquipBlocking.enableNonCombatEquipBlocker,
+					[&]() { nonCombatConnector.CaptureToggleFromLastItem(); });
+
+				RenderDependentBlock(nonCombatConnector, g_ui.draft.autoEquipBlocking.enableNonCombatEquipBlocker, [&]() {
+					CheckboxRow(
+						"ui.hand_item_restore.reequip_saved_hand_items.label",
+						"##EnableHandItemRestore",
+						g_ui.draft.autoEquipBlocking.enableHandItemRestore,
+						"ui.hand_item_restore.reequip_saved_hand_items.help",
+						"DefaultEnableHandItemRestore",
+						Defaults().autoEquipBlocking.enableHandItemRestore,
+						[&]() { nonCombatConnector.AddJoinFromLastItem(); });
+					SettingsItemGap();
+				});
+
+				CheckboxRow(
+					"ui.equip_suppression.block_best_weapon_auto_equip.label",
+					"##EnableBestWeaponAutoEquipSuppressor",
+					g_ui.draft.autoEquipBlocking.enableBestWeaponAutoEquipSuppressor,
+					"ui.equip_suppression.block_best_weapon_auto_equip.help",
+					"DefaultEnableBestWeaponAutoEquipSuppressor",
+					Defaults().autoEquipBlocking.enableBestWeaponAutoEquipSuppressor);
 				SettingsSectionDivider();
 			}
 

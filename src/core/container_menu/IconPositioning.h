@@ -94,7 +94,8 @@ namespace FEC::IconPositioning {
 	inline constexpr std::array kFecWrapperNames{
 		"fecCombatIconWrap",
 		"fecEquipIconWrap",
-		"fecOutfitSyncIconWrap"
+		"fecOutfitSyncIconWrap",
+		"fecHandItemIconWrap"
 	};
 
 	// SkyUI InventoryListEntry children that are not injected icons.
@@ -275,6 +276,7 @@ namespace FEC::IconPositioning {
 		RepositionVisibleFecIcon(a_entryClip, a_entryField, "fecCombatIconWrap");
 		RepositionVisibleFecIcon(a_entryClip, a_entryField, "fecEquipIconWrap", { "fecCombatIconWrap" });
 		RepositionVisibleFecIcon(a_entryClip, a_entryField, "fecOutfitSyncIconWrap", { "fecCombatIconWrap", "fecEquipIconWrap" });
+		RepositionVisibleFecIcon(a_entryClip, a_entryField, "fecHandItemIconWrap", { "fecCombatIconWrap", "fecEquipIconWrap", "fecOutfitSyncIconWrap" });
 	}
 
 }  // namespace FEC::IconPositioning

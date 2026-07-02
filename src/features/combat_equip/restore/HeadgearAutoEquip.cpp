@@ -130,8 +130,7 @@ namespace FEC::HeadgearAutoEquip
 			if (!a_actor) {
 				return;
 			}
-			// kHandOnly/kNone actors cannot equip body armor unless non-humanoid armor is enabled.
-			if (!ActorScope::BodyEquipAllowed(a_actor)) {
+			if (!ActorScope::ArmorValidationAllowed(a_actor)) {
 				return;
 			}
 
@@ -286,7 +285,7 @@ namespace FEC::HeadgearAutoEquip
 				}
 				if (!alreadyWorn) {
 					auto* form = RE::TESForm::LookupByID<RE::TESObjectARMO>(exp.baseObjectID);
-					if (form && IsHeadgearSlot(form) && InventoryHasItem(actor, exp.baseObjectID)) {
+					if (form && IsHeadgearSlot(form) && ActorScope::ArmorEquipAllowed(actor, form) && InventoryHasItem(actor, exp.baseObjectID)) {
 						EquipBestEffort(actor, form, exp.signature);
 						mismatch = true;
 					}
@@ -369,7 +368,8 @@ namespace FEC::HeadgearAutoEquip
 				}
 				if (!alreadyWorn) {
 					auto* armo = RE::TESForm::LookupByID<RE::TESObjectARMO>(pre.baseObjectID);
-					if (armo && IsHeadgearSlot(armo) && InventoryHasItem(actor, pre.baseObjectID)) {
+					if (armo && IsHeadgearSlot(armo) && ActorScope::ArmorEquipAllowed(actor, armo) &&
+						InventoryHasItem(actor, pre.baseObjectID)) {
 						EquipBestEffort(actor, armo, pre.signature);
 					}
 				}
@@ -390,8 +390,7 @@ namespace FEC::HeadgearAutoEquip
 			if (!actor || !ActorScope::IsAffectedFollower(actor)) {
 				return;
 			}
-			// kHandOnly/kNone actors cannot equip body armor unless non-humanoid armor is enabled.
-			if (!ActorScope::BodyEquipAllowed(actor)) {
+			if (!ActorScope::ArmorValidationAllowed(actor)) {
 				return;
 			}
 
@@ -413,7 +412,7 @@ namespace FEC::HeadgearAutoEquip
 			}
 
 			auto* armo = RE::TESForm::LookupByID<RE::TESObjectARMO>(pref->baseObjectID);
-			if (!armo || !IsHeadgearSlot(armo)) {
+			if (!armo || !IsHeadgearSlot(armo) || !ActorScope::ArmorEquipAllowed(actor, armo)) {
 				return;
 			}
 

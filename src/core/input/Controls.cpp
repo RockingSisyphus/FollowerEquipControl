@@ -87,7 +87,19 @@ namespace FEC::Controls
 
 	bool IsDikKeyDown(std::uint32_t a_dikScanCode)
 	{
-		const auto vk = ::MapVirtualKeyA(a_dikScanCode, MAPVK_VSC_TO_VK_EX);
+		if (a_dikScanCode == 0) {
+			return false;
+		}
+
+		const std::uint32_t baseScan = a_dikScanCode & 0x7Fu;
+		const bool extended = (a_dikScanCode & 0x80u) != 0;
+
+		UINT win32ScanCode = baseScan;
+		if (extended) {
+			win32ScanCode |= 0xE000u;
+		}
+
+		const auto vk = ::MapVirtualKeyA(win32ScanCode, MAPVK_VSC_TO_VK_EX);
 		if (vk == 0) {
 			return false;
 		}

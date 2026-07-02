@@ -1015,11 +1015,20 @@ namespace FEC
 		g_menuCloseHandle = ContainerMenuUtil::AddOnContainerMenuCloseListener([]() {
 			// Restore GFx hooks before GFxMovieRoot::dtor_impl runs.
 			// GetOpenContainerMenu() is null while closing, so the cached GPtr keeps the menu alive.
-			if (g_openMenu) {
-				TryUnhookNavPanel(g_openMenu.get());
-				EquipMode::Core::AttemptEquipHook::TryUninstallHook(g_openMenu.get());
-				EquipMode::Core::GamepadEquipHook::TryUninstallHooks(g_openMenu.get());
+			RE::GPtr<RE::ContainerMenu> menu = g_openMenu;
+			if (menu) {
 				g_openMenu = nullptr;
+
+				TryUnhookNavPanel(menu.get());
+				EquipMode::Core::AttemptEquipHook::TryUninstallHook(menu.get());
+				EquipMode::Core::GamepadEquipHook::TryUninstallHooks(menu.get());
+
+				if (auto* taskInterface = SKSE::GetTaskInterface()) {
+					// Release the cached menu after the close callback returns.
+					taskInterface->AddTask([menu]() mutable {
+						menu = nullptr;
+					});
+				}
 			}
 			UninstallInputSink();
 			g_lastModKeyDown.store(false);

@@ -71,6 +71,23 @@ namespace FEC::EquipMode::Fixes
 			return false;
 		}
 
+		[[nodiscard]] bool IsCorpseEquipSupportedSelectedObject(RE::ContainerMenu* a_menu)
+		{
+			if (!a_menu) {
+				return false;
+			}
+
+			auto* itemList = a_menu->GetRuntimeData().itemList;
+			auto* selected = itemList ? itemList->GetSelectedItem() : nullptr;
+			auto* entry = selected ? selected->data.objDesc : nullptr;
+			auto* object = entry ? entry->object : nullptr;
+			if (!object) {
+				return false;
+			}
+
+			return object->IsArmor() || object->IsWeapon() || object->GetFormType() == RE::FormType::Ammo;
+		}
+
 		[[nodiscard]] bool ShouldOverrideQuantityMinCount(RE::ContainerMenu* a_menu)
 		{
 			if (!a_menu) {
@@ -87,8 +104,8 @@ namespace FEC::EquipMode::Fixes
 					return true;
 				}
 				// GetAffectedTarget rejects dead actors, but Corpse Equip Mode still needs to block
-				// the quantity dialog so OnTransferPre sees the mod key as held.
-				if (PluginSettings::Get().corpseEquipMode.enable) {
+				// the quantity dialog for equip-supported corpse items so OnTransferPre sees the mod key as held.
+				if (PluginSettings::Get().corpseEquipMode.enable && IsCorpseEquipSupportedSelectedObject(a_menu)) {
 					auto corpse = ContainerMenuUtil::ResolveActorHandle(a_menu->GetTargetRefHandle());
 					if (corpse && !corpse->IsPlayerRef() && corpse->IsDead()) {
 						return true;

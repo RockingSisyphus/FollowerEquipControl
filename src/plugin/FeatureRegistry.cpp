@@ -19,6 +19,7 @@
 #include "HeadgearAutoEquip.h"
 #include "CombatHeadgearIconInjector.h"
 #include "CombatEquipIconInjector.h"
+#include "HandItemIconInjector.h"
 #include "OutfitSyncIconInjector.h"
 #include "InfiniteAmmo.h"
 
@@ -31,6 +32,7 @@
 #include "EquipGate.h"
 
 #include "BestWeaponAutoEquipSuppressor.h"
+#include "HandItemRestore.h"
 #include "NonPlayableItemSanitizer.h"
 #include "OutfitItemSanitizer.h"
 #include "LeveledItemBlocker.h"
@@ -66,6 +68,7 @@ namespace FEC
 				NpcOutfitUpdateHook::Install();
 				OutfitSnapshotRestore::Install();
 				BestWeaponAutoEquipSuppressor::Install();
+				HandItemRestore::Install();
 				NonPlayableItemSanitizer::Install();
 				OutfitItemSanitizer::Install();
 				LeveledItemBlocker::Install();
@@ -84,6 +87,7 @@ namespace FEC
 				CombatHeadgearIconInjector::Install();
 				CombatEquipIconInjector::Install();
 				OutfitSyncIconInjector::Install();
+				HandItemIconInjector::Install();
 				InfiniteAmmo::Install();
 				ContainerLootBlocker::Install();
 				CorpseLootBlocker::Install();
@@ -100,6 +104,7 @@ namespace FEC
 				CorpseLootBlocker::Uninstall();
 				ContainerLootBlocker::Uninstall();
 				InfiniteAmmo::Uninstall();
+				HandItemIconInjector::Uninstall();
 				OutfitSyncIconInjector::Uninstall();
 				CombatEquipIconInjector::Uninstall();
 				CombatHeadgearIconInjector::Uninstall();
@@ -118,6 +123,7 @@ namespace FEC
 				LeveledItemBlocker::Uninstall();
 				OutfitItemSanitizer::Uninstall();
 				NonPlayableItemSanitizer::Uninstall();
+				HandItemRestore::Uninstall();
 				BestWeaponAutoEquipSuppressor::Uninstall();
 				OutfitSnapshotRestore::Uninstall();
 				NpcOutfitUpdateHook::Uninstall();
@@ -146,6 +152,7 @@ namespace FEC
 			CorpseLootBlocker::Uninstall();
 			ContainerLootBlocker::Uninstall();
 			InfiniteAmmo::Uninstall();
+			HandItemIconInjector::Uninstall();
 			OutfitSyncIconInjector::Uninstall();
 			CombatEquipIconInjector::Uninstall();
 			CombatHeadgearIconInjector::Uninstall();
@@ -164,6 +171,7 @@ namespace FEC
 			LeveledItemBlocker::Uninstall();
 			OutfitItemSanitizer::Uninstall();
 			NonPlayableItemSanitizer::Uninstall();
+			HandItemRestore::Uninstall();
 			BestWeaponAutoEquipSuppressor::Uninstall();
 			OutfitSnapshotRestore::Uninstall();
 			NpcOutfitUpdateHook::Uninstall();

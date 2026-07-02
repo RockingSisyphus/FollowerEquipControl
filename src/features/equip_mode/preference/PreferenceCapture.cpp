@@ -4,6 +4,7 @@
 #include "CombatEquipPreference.h"
 #include "CombatEquipPreferencePolicy.h"
 #include "ContainerMenuUtil.h"
+#include "HandItemRestore.h"
 #include "OutfitSnapshotRestore.h"
 
 namespace FEC::EquipMode::Preference
@@ -35,6 +36,7 @@ namespace FEC::EquipMode::Preference
 			CombatEquipPreference::CaptureUserEquip(a_actor, a_object, a_leftHand, a_xList, a_hasSelection);
 		}
 		OutfitSnapshotRestore::CaptureUserEquip(a_actor, a_object, a_xList, a_hasSelection);
+		HandItemRestore::CaptureUserEquip(a_actor, a_object, a_leftHand, a_xList, a_hasSelection);
 	}
 
 	void CaptureUnequip(RE::Actor* a_actor, RE::TESBoundObject* a_object, bool a_leftHand)
@@ -64,5 +66,6 @@ namespace FEC::EquipMode::Preference
 			CombatEquipPreference::CaptureUserUnequip(a_actor, a_object, a_leftHand);
 		}
 		OutfitSnapshotRestore::CaptureUserUnequip(a_actor, a_object);
+		HandItemRestore::CaptureUserUnequip(a_actor, a_object, a_leftHand);
 	}
 }

@@ -130,11 +130,20 @@ namespace FEC::InfiniteAmmo
 
 	void Install()
 	{
+		if (!IsEnabled()) {
+			Uninstall();
+			return;
+		}
+
 		if (g_installed.load()) {
 			return;
 		}
 
 		std::lock_guard lock(g_installLock);
+		if (!IsEnabled()) {
+			return;
+		}
+
 		if (g_installed.load()) {
 			return;
 		}

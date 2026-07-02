@@ -43,12 +43,13 @@ namespace FEC::NonCombatEquipBlocker
 			return armor && armor->IsShield();
 		}();
 		const bool isAmmo = (formType == RE::FormType::Ammo);
-		if (!isWeapon && !isShield && !isAmmo) {
+		const bool isScroll = (formType == RE::FormType::Scroll);
+		if (!isWeapon && !isShield && !isAmmo && !isScroll) {
 			return false;
 		}
 
-		// Allow refresh equips for already equipped weapons and shields.
-		if (isWeapon || isShield) {
+		// Allow refresh equips for already equipped hand items.
+		if (isWeapon || isShield || isScroll) {
 			const auto* right = a_actor->GetEquippedObject(false);
 			const auto* left = a_actor->GetEquippedObject(true);
 			if (a_object == right || a_object == left) {

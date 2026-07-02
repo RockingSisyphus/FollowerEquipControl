@@ -65,8 +65,9 @@ namespace FEC::CombatEquipOverride
 		}
 
 		// Non-melee queued equips can leave IsRangedWeaponEquipped() false long enough for
-		// the melee unequip guard to block vanilla. Pre-clear melee hands before the equip runs.
-		if (cls == EquipClass::kUnknown && PluginSettings::Get().combatEquipEnforcement.enableMeleeEnforcement) {
+		// the melee unequip guard to block vanilla. Non-shield armor does not use hand slots.
+		if (cls == EquipClass::kUnknown && !Util::IsNonShieldArmor(a_object) &&
+			PluginSettings::Get().combatEquipEnforcement.enableMeleeEnforcement) {
 			auto* rightForm = a_actor->GetEquippedObject(false);
 			auto* rightObj = rightForm ? rightForm->As<RE::TESBoundObject>() : nullptr;
 			auto* leftForm = a_actor->GetEquippedObject(true);
