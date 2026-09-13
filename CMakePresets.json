@@ -1,0 +1,82 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "common",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SKSE_SUPPORT_XBYAK": "ON",
+		"BUILD_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": {
+          "type": "STRING",
+          "value": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        },
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    },
+    {
+      "name": "ninja",
+      "hidden": true,
+      "generator": "Ninja Multi-Config",
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "intelliSenseMode": "windows-msvc-x64"
+        }
+      }
+    },
+    {
+      "name": "msvcRuntime",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+      }
+    },
+    {
+      "name": "Skyrim",
+      "displayName": "Skyrim SE/AE",
+      "inherits": [
+        "common",
+        "vcpkg",
+        "ninja",
+        "msvcRuntime"
+      ],
+      "cacheVariables": {
+        "BUILD_SKYRIM": true,
+        "ENABLE_SKYRIM_AE": "ON",
+        "ENABLE_SKYRIM_SE": "ON",
+        "ENABLE_SKYRIM_VR": "OFF"
+      }
+    },
+    {
+      "name": "SkyrimVR",
+      "displayName": "Skyrim VR (unsupported)",
+      "description": "Skyrim VR is currently not supported; this preset is kept as a future starting point.",
+      "hidden": true,
+      "inherits": [
+        "common",
+        "vcpkg",
+        "ninja",
+        "msvcRuntime"
+      ],
+      "cacheVariables": {
+        "BUILD_SKYRIMVR": true,
+        "ENABLE_SKYRIM_AE": "OFF",
+        "ENABLE_SKYRIM_SE": "OFF",
+        "ENABLE_SKYRIM_VR": "ON"
+      }
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout (with CommonLibSSE-NG submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Locate vcpkg
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root) { $root = "C:\vcpkg" }
+          if (-not (Test-Path $root)) { throw "vcpkg not found at $root" }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using vcpkg at $root"
+          Get-Content "$root\.vcpkg-root" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Show active compiler
+        shell: pwsh
+        run: |
+          # The windows image also ships MinGW (C:\mingw64). Without an MSVC environment
+          # CMake silently selects MinGW, whose ABI makes CommonLibSSE-NG's size
+          # static_asserts fail (e.g. sizeof(MagicItemDataCollector): 72 != 80).
+          $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+          if (-not $cl) { throw "cl.exe not on PATH; MSVC environment was not set up" }
+          Write-Host "cl.exe: $($cl.Source)"
+          & cl 2>&1 | Select-Object -First 1
+
+      - name: Slot-resolution test (fails if the fix regresses)
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python tools/test_slot_resolution.py
+          if ($LASTEXITCODE -ne 0) { throw "slot resolution test failed" }
+
+      - name: Configure (CMake preset Skyrim)
+        shell: pwsh
+        run: |
+          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
+          # Prove the MSVC toolchain was used, not MinGW.
+          Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:' | ForEach-Object { $_.Line }
+
+      - name: Build (Release)
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Verify the built DLL
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll |
+                   Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $dll) { $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll | Select-Object -First 1 }
+          if (-not $dll) { throw "FollowerEquipControl.dll was not produced" }
+          Write-Host "DLL: $($dll.FullName) ($($dll.Length) bytes)"
+          $version = (Get-Item $dll.FullName).VersionInfo.FileVersion
+          Write-Host "FileVersion: $version"
+          "DLL_PATH=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Package installable mod folder
+        shell: pwsh
+        run: |
+          $out = "dist/Follower Equip Control SKSE"
+          New-Item -ItemType Directory -Force -Path "$out/SKSE/Plugins/FollowerEquipControl" | Out-Null
+          Copy-Item "$env:DLL_PATH" "$out/SKSE/Plugins/FollowerEquipControl.dll" -Force
+          Copy-Item "mod/SKSE/Plugins/FollowerEquipControl.ini" "$out/SKSE/Plugins/" -Force
+          Copy-Item "mod/SKSE/Plugins/FollowerEquipControl/*" "$out/SKSE/Plugins/FollowerEquipControl/" -Recurse -Force
+          Copy-Item "mod/Interface" "$out/Interface" -Recurse -Force
+          Get-ChildItem -Recurse $out | Select-Object -ExpandProperty FullName
+          Get-FileHash "$out/SKSE/Plugins/FollowerEquipControl.dll" -Algorithm SHA256 |
+            Format-List | Out-String | Write-Host
+
+      - name: Upload DLL only (for swapping into an existing install)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FollowerEquipControl-dll
+          path: ${{ env.DLL_PATH }}
+          if-no-files-found: error
+
+      - name: Upload installable mod folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: FollowerEquipControl-mod
+          path: dist/Follower Equip Control SKSE
+          if-no-files-found: error
