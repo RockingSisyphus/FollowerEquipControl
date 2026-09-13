@@ -1,0 +1,131 @@
+name: build-fast
+
+# 与 build.yml 完全等价的产物，但针对"冷编译很慢"做了加速：
+#   1) vcpkg 依赖走二进制缓存（避免每次从源码重编 fmt/spdlog/detours/xbyak）
+#   2) 把 vcpkg 依赖安装提前并显式化，便于日志分辨"安装"与"编译"
+#   3) 关闭插件目标的 LTCG/IPO（链接期代码生成很慢；对 mod 无收益）
+#   4) 编译阶段计时，便于和慢速版本对比
+# 目的：与 build.yml 并行跑，谁先产出可用 DLL 就用谁。
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+env:
+  VCPKG_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
+
+jobs:
+  build-fast:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout (with CommonLibSSE-NG submodule)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Locate vcpkg
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root) { $root = "C:\vcpkg" }
+          if (-not (Test-Path $root)) { throw "vcpkg not found at $root" }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using vcpkg at $root"
+
+      - name: Slot-resolution test (fails if the fix regresses)
+        shell: pwsh
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python tools/test_slot_resolution.py
+          if ($LASTEXITCODE -ne 0) { throw "slot resolution test failed" }
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_BINARY_CACHE }}
+          key: vcpkg-${{ runner.os }}-x64-windows-static-md-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-x64-windows-static-md-
+
+      - name: Install vcpkg dependencies (cached)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_BINARY_CACHE | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$env:VCPKG_BINARY_CACHE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:VCPKG_DEFAULT_BINARY_CACHE = $env:VCPKG_BINARY_CACHE
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static-md --x-manifest-root=. --x-install-root=build/vcpkg_installed
+          $code = $LASTEXITCODE
+          $sw.Stop()
+          Write-Host "vcpkg install elapsed: $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code)"
+          if ($code -ne 0) { throw "vcpkg install failed" }
+
+      - name: Configure (CMake preset Skyrim, no LTCG)
+        shell: pwsh
+        run: |
+          # CMAKE_INTERPROCEDURAL_OPTIMIZATION is overridden below for the plugin target.
+          # Kept off here for the whole configure so commonlib also skips link-time codegen.
+          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
+          if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
+          Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:' | ForEach-Object { $_.Line }
+
+      - name: Build (Release)
+        shell: pwsh
+        run: |
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          cmake --build build --config Release --parallel
+          $code = $LASTEXITCODE
+          $sw.Stop()
+          Write-Host "build elapsed: $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code)"
+          if ($code -ne 0) { throw "build failed" }
+
+      - name: Verify the built DLL
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll |
+                   Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $dll) { $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll | Select-Object -First 1 }
+          if (-not $dll) { throw "FollowerEquipControl.dll was not produced" }
+          Write-Host "DLL: $($dll.FullName) ($($dll.Length) bytes)"
+          Write-Host "FileVersion: $((Get-Item $dll.FullName).VersionInfo.FileVersion)"
+          "DLL_PATH=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Package installable mod folder
+        shell: pwsh
+        run: |
+          $out = "dist/Follower Equip Control SKSE"
+          New-Item -ItemType Directory -Force -Path "$out/SKSE/Plugins/FollowerEquipControl" | Out-Null
+          Copy-Item "$env:DLL_PATH" "$out/SKSE/Plugins/FollowerEquipControl.dll" -Force
+          Copy-Item "mod/SKSE/Plugins/FollowerEquipControl.ini" "$out/SKSE/Plugins/" -Force
+          Copy-Item "mod/SKSE/Plugins/FollowerEquipControl/*" "$out/SKSE/Plugins/FollowerEquipControl/" -Recurse -Force
+          Copy-Item "mod/Interface" "$out/Interface" -Recurse -Force
+          Get-FileHash "$out/SKSE/Plugins/FollowerEquipControl.dll" -Algorithm SHA256 | Format-List | Out-String | Write-Host
+
+      - name: Upload DLL only
+        uses: actions/upload-artifact@v4
+        with:
+          name: FollowerEquipControl-dll-fast
+          path: ${{ env.DLL_PATH }}
+          if-no-files-found: error
+
+      - name: Upload installable mod folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: FollowerEquipControl-mod-fast
+          path: dist/Follower Equip Control SKSE
+          if-no-files-found: error
+
+      - name: Report cache size
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path $env:VCPKG_BINARY_CACHE) {
+            $size = (Get-ChildItem -Recurse $env:VCPKG_BINARY_CACHE | Measure-Object -Property Length -Sum).Sum
+            Write-Host "vcpkg binary cache size: $([math]::Round($size/1MB,1)) MB"
+          }
