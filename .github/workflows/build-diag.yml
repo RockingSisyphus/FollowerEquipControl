@@ -11,7 +11,7 @@ on:
 jobs:
   diag:
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -65,18 +65,27 @@ jobs:
             Set-Location $dir
             cmake --build build --config Release --parallel *> build-partial.log
           }
-          Start-Sleep -Seconds 180
+          Start-Sleep -Seconds 1800
           $still = $job.State -eq 'Running'
-          Write-Host "build still running after 180s: $still"
+          Write-Host "build still running after 1800s: $still"
           if ($still) { Stop-Job $job }
           Remove-Job $job -Force
           if (Test-Path build-partial.log) {
             $log = Get-Content build-partial.log
             Write-Host "build log lines: $($log.Count)"
             $compiled = ($log | Select-String -Pattern 'Building CXX object').Count
-            Write-Host "compiled translation units in <=180s: $compiled"
+            Write-Host "compiled translation units in <=1800s: $compiled"
             Write-Host "--- 最后 8 行 ---"
             $log | Select-Object -Last 8
+            Write-Host "--- 每 100 个单元的时间点（从日志行号推断进度）---"
+            $log | Select-String -Pattern '\[(\d+)/(\d+)\]' | ForEach-Object {
+              $m = [regex]::Match($_.Line, '\[(\d+)/(\d+)\]')
+              if ($m.Success -and ([int]$m.Groups[1].Value % 50 -eq 0)) { Write-Host $_.Line }
+            } | Select-Object -First 20
+            Write-Host "--- 已完成的目标统计 ---"
+            $log | Select-String -Pattern 'Building (CXX|RC) object (\S+)\\CMakeFiles\\(\S+?)\.dir' -AllMatches |
+              ForEach-Object { [regex]::Match($_.Line, 'CMakeFiles\\([^\\]+)\.dir').Groups[1].Value } |
+              Group-Object | Sort-Object Count -Descending | Select-Object -First 8 | ForEach-Object { Write-Host "$($_.Count)  $($_.Name)" }
           } else { Write-Host "no build log produced" }
 
       - name: Upload diagnostics
