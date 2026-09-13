@@ -1,0 +1,91 @@
+name: build-diag
+
+# 诊断用：不追求产物，只回答"到底在编什么、有多少编译单元、进度如何"。
+# 会设置超时，超时后把已观察到的信息输出，便于判断是否值得继续等。
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: windows-2022
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: vcpkg env
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT; if (-not $root) { $root = "C:\vcpkg" }
+          "VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $cache = Join-Path $env:GITHUB_WORKSPACE "vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cache" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "vcpkg binary cache dir: $cache (exists: $(Test-Path $cache))"
+
+      - name: Configure (quiet)
+        shell: pwsh
+        run: |
+          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF *> configure.log
+          if ($LASTEXITCODE -ne 0) { Get-Content configure.log -Tail 60; throw "configure failed" }
+          Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:|^CMAKE_GENERATOR:' | ForEach-Object { $_.Line }
+
+      - name: Build plan (what would actually be compiled)
+        shell: pwsh
+        run: |
+          # Ninja Multi-Config: dry-run via ninja directly, count compile edges.
+          $ninja = (Get-Command ninja -ErrorAction SilentlyContinue).Source
+          if (-not $ninja) { $ninja = (Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\**\ninja.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          Write-Host "ninja: $ninja"
+          if ($ninja) {
+            $out = & $ninja -C build -f build-Release.ninja -n 2>&1
+            $out | Out-File -FilePath plan.txt -Encoding utf8
+            $compiles = ($out | Select-String -Pattern 'cl\.exe' -AllMatches).Count
+            $objs = ($out | Select-String -Pattern '\.obj' -AllMatches).Count
+            Write-Host "plan lines: $($out.Count) | cl.exe mentions: $compiles | .obj mentions: $objs"
+            Write-Host "--- 插件相关编译单元 ---"
+            $out | Select-String -Pattern 'FollowerEquipControl' | Select-Object -First 8 | ForEach-Object { $_.Line }
+          } else {
+            Write-Host "ninja not found; skipping plan"
+          }
+
+      - name: Timed partial build (3 minutes) to measure throughput
+        shell: pwsh
+        run: |
+          $ws = $PWD.Path
+          $job = Start-Job -ArgumentList $ws -ScriptBlock {
+            param($dir)
+            Set-Location $dir
+            cmake --build build --config Release --parallel *> build-partial.log
+          }
+          Start-Sleep -Seconds 180
+          $still = $job.State -eq 'Running'
+          Write-Host "build still running after 180s: $still"
+          if ($still) { Stop-Job $job }
+          Remove-Job $job -Force
+          if (Test-Path build-partial.log) {
+            $log = Get-Content build-partial.log
+            Write-Host "build log lines: $($log.Count)"
+            $compiled = ($log | Select-String -Pattern 'Building CXX object').Count
+            Write-Host "compiled translation units in <=180s: $compiled"
+            Write-Host "--- 最后 8 行 ---"
+            $log | Select-Object -Last 8
+          } else { Write-Host "no build log produced" }
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-logs
+          path: |
+            configure.log
+            plan.txt
+            build-partial.log
+          if-no-files-found: warn
