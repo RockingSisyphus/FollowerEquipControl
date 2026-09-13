@@ -18,6 +18,9 @@ env:
 jobs:
   build-fast:
     runs-on: windows-2022
+    # Guard rail: with IPO disabled the whole build is ~470 translation units
+    # (measured ~2.2 s each) plus linking, so anything past this is a real hang.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout (with CommonLibSSE-NG submodule)
@@ -66,14 +69,18 @@ jobs:
           Write-Host "vcpkg install elapsed: $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code)"
           if ($code -ne 0) { throw "vcpkg install failed" }
 
-      - name: Configure (CMake preset Skyrim, no LTCG)
+      - name: Configure (CMake preset Skyrim, IPO off)
         shell: pwsh
         run: |
-          # CMAKE_INTERPROCEDURAL_OPTIMIZATION is overridden below for the plugin target.
-          # Kept off here for the whole configure so commonlib also skips link-time codegen.
-          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
+          # SKSE_ENABLE_IPO=OFF strips MSVC /GL + /LTCG. Whole-program optimisation is
+          # what made this build take hours on a 2-core runner; it buys a mod nothing.
+          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DSKSE_ENABLE_IPO=OFF
           if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
-          Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:' | ForEach-Object { $_.Line }
+          Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:|^SKSE_ENABLE_IPO:' | ForEach-Object { $_.Line }
+          # Prove /GL (link-time codegen) is really gone before spending time building.
+          $gl = Select-String -Path build/build-Release.ninja -Pattern '/GL' -SimpleMatch -Quiet
+          if ($gl) { throw "/GL is still present in build-Release.ninja; IPO was not disabled" }
+          Write-Host "verified: no /GL in build-Release.ninja"
 
       - name: Build (Release)
         shell: pwsh

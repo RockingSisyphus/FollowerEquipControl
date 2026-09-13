@@ -39,8 +39,19 @@ target_compile_definitions(
 )
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set_property(TARGET "${PROJECT_NAME}" PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-set_property(TARGET "${PROJECT_NAME}" PROPERTY INTERPROCEDURAL_OPTIMIZATION_DEBUG FALSE)
+
+# Whole-program optimisation (MSVC /GL + /LTCG) is the dominant cost of a Release
+# build: it re-optimises every translation unit at link time. Allow it to be turned
+# off for CI / local iteration where build time matters more than the last few
+# percent of runtime performance. Defaults to the original behaviour (ON).
+option(SKSE_ENABLE_IPO "Enable interprocedural (link-time) optimisation for the plugin target" ON)
+if(SKSE_ENABLE_IPO)
+  set_property(TARGET "${PROJECT_NAME}" PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  set_property(TARGET "${PROJECT_NAME}" PROPERTY INTERPROCEDURAL_OPTIMIZATION_DEBUG FALSE)
+else()
+  set_property(TARGET "${PROJECT_NAME}" PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+  message(STATUS "Interprocedural optimisation: OFF (SKSE_ENABLE_IPO=OFF)")
+endif()
 
 include(AddCXXFiles)
 add_cxx_files("${PROJECT_NAME}")
