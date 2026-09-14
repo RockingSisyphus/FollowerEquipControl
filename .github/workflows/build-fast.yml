@@ -82,44 +82,33 @@ jobs:
           if ($gl) { throw "/GL is still present in build-Release.ninja; IPO was not disabled" }
           Write-Host "verified: no /GL in build-Release.ninja"
 
-      - name: Build (Release) with progress watchdog
+      - name: Build (Release) with live progress
         shell: pwsh
         run: |
+          # Stream the build output straight into the job log with Tee-Object so
+          # progress is visible while the job runs (a background Start-Job hides it
+          # until completion, which made earlier timeouts impossible to diagnose).
           $log = Join-Path $PWD "build-full.log"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          $job = Start-Job -ArgumentList $PWD.Path, $log -ScriptBlock {
-            param($dir, $logfile)
-            Set-Location $dir
-            cmake --build build --config Release *> $logfile
-          }
-          # 每 5 分钟汇报一次真实进度，避免出现"跑了 45 分钟不知道在哪"的黑盒
-          while ($job.State -eq 'Running') {
-            Start-Sleep -Seconds 300
-            if (Test-Path $log) {
-              $last = (Get-Content $log | Select-String -Pattern '^\[\d+/\d+\]' | Select-Object -Last 1).Line
-              Write-Host "[$($sw.Elapsed.ToString('hh\:mm\:ss'))] $last"
-            }
-          }
-          Receive-Job $job | Out-Null
-          Remove-Job $job -Force
+          Write-Host "=== build start $($sw.StartTimestamp.ToString('u')) ==="
+          cmake --build build --config Release 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
           $sw.Stop()
-          Write-Host "--- build finished in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s ---"
+          Write-Host "=== build finished in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code) ==="
           if (Test-Path $log) {
             $lines = Get-Content $log
-            Write-Host "log lines: $($lines.Count)"
-            Write-Host "--- 编译/链接阶段时间点 ---"
-            $lines | Select-String -Pattern 'Linking|Building CXX object CMakeFiles\\FollowerEquipControl' | Select-Object -First 3 | ForEach-Object { $_.Line }
-            $lines | Select-String -Pattern 'Linking' | Select-Object -Last 3 | ForEach-Object { $_.Line }
-            Write-Host "--- 最后 10 行 ---"
-            $lines | Select-Object -Last 10
+            $last = ($lines | Select-String -Pattern '^\[\d+/\d+\]' | Select-Object -Last 1).Line
+            Write-Host "last progress: $last"
+            Write-Host "--- linking lines ---"
+            $lines | Select-String -Pattern 'Linking' | ForEach-Object { $_.Line }
           }
-          # 失败判定：DLL 是否真的产出
-          $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $dll) {
-            if (Test-Path $log) { Get-Content $log | Select-Object -Last 40 }
-            throw "build failed: FollowerEquipControl.dll not produced"
+          if ($code -ne 0) {
+            if (Test-Path $log) { Get-Content $log | Select-Object -Last 60 }
+            throw "build failed (exit=$code)"
           }
-          Write-Host "DLL produced: $($dll.FullName) ($($dll.Length) bytes)"
+          $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll | Select-Object -First 1
+          if (-not $dll) { throw "FollowerEquipControl.dll not produced" }
+          Write-Host "DLL: $($dll.FullName) ($($dll.Length) bytes)"
 
       - name: Verify the built DLL
         shell: pwsh
