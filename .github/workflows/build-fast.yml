@@ -77,17 +77,19 @@ jobs:
           cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DSKSE_ENABLE_IPO=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
           if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
           Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:|^SKSE_ENABLE_IPO:' | ForEach-Object { $_.Line }
-          # Prove /GL (link-time codegen) is gone from EVERY target, including the
-          # CommonLibSSE static library. A single-file check missed it before, which let
-          # a multi-hour /LTCG link slip through.
-          $ninjas = Get-ChildItem -Recurse build -Filter *.ninja -ErrorAction SilentlyContinue
-          Write-Host "ninja files checked: $($ninjas.Count)"
-          $hits = $ninjas | Select-String -Pattern '/GL' -SimpleMatch
-          if ($hits) {
-            $hits | Select-Object -First 10 | ForEach-Object { Write-Host $_.Line }
-            throw "/GL still present in $($hits.Count) ninja entries; IPO was not fully disabled"
+          # Prove /GL (link-time codegen) is absent from the Release commands we will
+          # actually run. Scanning every ninja file is wrong: Debug/RelWithDebInfo/
+          # MinSizeRel keep /GL and we never build them. A dry run of Release is exact.
+          foreach ($t in @("CommonLibSSE", "FollowerEquipControl")) {
+            $dry = & cmake --build build --config Release --target $t -- -n -v 2>&1
+            $hits = $dry | Select-String -Pattern '/GL' -SimpleMatch
+            Write-Host "$t : dry-run lines=$($dry.Count) /GL hits=$($hits.Count)"
+            if ($hits) {
+              $hits | Select-Object -First 5 | ForEach-Object { Write-Host $_.Line }
+              throw "/GL is still present in the Release commands for $t"
+            }
           }
-          Write-Host "verified: no /GL in any ninja file"
+          Write-Host "verified: no /GL in Release commands for CommonLibSSE or FollowerEquipControl"
 
       - name: Build (Release) with live progress
         shell: pwsh
