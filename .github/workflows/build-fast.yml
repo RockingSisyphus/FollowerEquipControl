@@ -90,7 +90,7 @@ jobs:
           # until completion, which made earlier timeouts impossible to diagnose).
           $log = Join-Path $PWD "build-full.log"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          Write-Host "=== build start $($sw.StartTimestamp.ToString('u')) ==="
+          Write-Host "=== build start $(Get-Date -Format u) ==="
           cmake --build build --config Release 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           $sw.Stop()
