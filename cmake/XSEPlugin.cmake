@@ -83,7 +83,7 @@ if(MSVC)
   # file without optimization/inlining.
   set_source_files_properties(
     "${PROJECT_SOURCE_DIR}/src/core/settings/MenuFrameworkSettings.cpp"
-    PROPERTIES COMPILE_OPTIONS "/Od;/Ob0"
+    PROPERTIES COMPILE_OPTIONS "/Od;/Ob0" SKIP_PRECOMPILE_HEADERS ON
   )
   target_compile_options(
     "${PROJECT_NAME}"

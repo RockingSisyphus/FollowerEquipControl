@@ -96,8 +96,17 @@ jobs:
         shell: pwsh
         run: |
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          & ninja -C build -f build-Release.ninja -v CMakeFiles/FollowerEquipControl.dir/Release/src/core/settings/MenuFrameworkSettings.cpp.obj
-          if ($LASTEXITCODE -ne 0) { throw "Settings UI compilation failed" }
+          $target = "CMakeFiles/FollowerEquipControl.dir/Release/src/core/settings/MenuFrameworkSettings.cpp.obj"
+          & ninja -C build -f build-Release.ninja -t commands $target | Set-Content settings-commands.log
+          Get-Content settings-commands.log
+          $proc = Start-Process ninja -ArgumentList @('-C', 'build', '-f', 'build-Release.ninja', '-v', $target) -NoNewWindow -PassThru -RedirectStandardOutput settings-build.log -RedirectStandardError settings-error.log
+          while (-not $proc.WaitForExit(30000)) {
+            Get-Process cl, c1xx, c2, ninja -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, CPU, WorkingSet64 | Format-Table | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
+            Get-CimInstance Win32_Process -Filter "Name='cl.exe'" | Select-Object ProcessId, ParentProcessId, CommandLine | Format-List | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
+          }
+          Get-Content settings-build.log
+          Get-Content settings-error.log
+          if ($proc.ExitCode -ne 0) { throw "Settings UI compilation failed ($($proc.ExitCode))" }
           Write-Host "Settings UI compiled in $($sw.Elapsed.TotalSeconds)s"
 
       - name: Build (Release) with live progress
@@ -157,6 +166,7 @@ jobs:
           name: build-log
           path: |
             build-full.log
+            settings-*.log
             build/CMakeCache.txt
             build/CMakeFiles/impl-Release.ninja
             build/CMakeFiles/rules.ninja
