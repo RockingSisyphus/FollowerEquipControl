@@ -78,6 +78,13 @@ target_sources(
 target_precompile_headers("${PROJECT_NAME}" PRIVATE "${PROJECT_SOURCE_DIR}/src/PCH.h")
 
 if(MSVC)
+  # This large settings UI translation unit does not finish with /O2 on the
+  # Windows runner. Keep the gameplay code optimized and compile only this UI
+  # file without optimization/inlining.
+  set_source_files_properties(
+    "${PROJECT_SOURCE_DIR}/src/core/settings/MenuFrameworkSettings.cpp"
+    PROPERTIES COMPILE_OPTIONS "/Od;/Ob0"
+  )
   target_compile_options(
     "${PROJECT_NAME}"
     PRIVATE
