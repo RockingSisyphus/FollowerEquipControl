@@ -74,7 +74,7 @@ jobs:
         run: |
           # SKSE_ENABLE_IPO=OFF strips MSVC /GL + /LTCG. Whole-program optimisation is
           # what made this build take hours on a 2-core runner; it buys a mod nothing.
-          cmake --preset Skyrim -DCMAKE_BUILD_TYPE=Release -DSKSE_ENABLE_IPO=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
+          cmake --preset Skyrim -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_C_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release -DSKSE_ENABLE_IPO=OFF -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
           if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
           Select-String -Path build/CMakeCache.txt -Pattern '^CMAKE_CXX_COMPILER:|^SKSE_ENABLE_IPO:' | ForEach-Object { $_.Line }
           # Prove /GL (link-time codegen) is absent from the Release commands we will
@@ -101,8 +101,8 @@ jobs:
           Get-Content settings-commands.log
           $proc = Start-Process ninja -ArgumentList @('-C', 'build', '-f', 'build-Release.ninja', '-v', $target) -NoNewWindow -PassThru -RedirectStandardOutput settings-build.log -RedirectStandardError settings-error.log
           while (-not $proc.WaitForExit(30000)) {
-            Get-Process cl, c1xx, c2, ninja -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, CPU, WorkingSet64 | Format-Table | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
-            Get-CimInstance Win32_Process -Filter "Name='cl.exe'" | Select-Object ProcessId, ParentProcessId, CommandLine | Format-List | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
+            Get-Process cl, clang-cl, c1xx, c2, ninja -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, CPU, WorkingSet64 | Format-Table | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
+            Get-CimInstance Win32_Process -Filter "Name='cl.exe' OR Name='clang-cl.exe'" | Select-Object ProcessId, ParentProcessId, CommandLine | Format-List | Out-String | Tee-Object -FilePath settings-process.log -Append | Write-Host
           }
           Get-Content settings-build.log
           Get-Content settings-error.log
