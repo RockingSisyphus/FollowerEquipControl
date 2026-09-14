@@ -91,6 +91,18 @@ jobs:
           }
           Write-Host "verified: no /GL in Release commands for CommonLibSSE or FollowerEquipControl"
 
+      - name: Compile version resource first
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          Select-String -Path build/CMakeCache.txt -Pattern 'CMAKE_RC_COMPILER|CMAKE_MT:'
+          $targets = & ninja -C build -f build-Release.ninja -t targets all
+          $targets | Select-String 'Version.rc' | ForEach-Object { $_.Line }
+          $rcTarget = ($targets | Where-Object { $_ -match 'Version.rc.res: RC_COMPILER' } | Select-Object -First 1) -replace ': RC_COMPILER.*$', ''
+          if (-not $rcTarget) { throw "Version resource target not found" }
+          & ninja -C build -f build-Release.ninja -v $rcTarget
+          if ($LASTEXITCODE -ne 0) { throw "Resource compilation failed" }
+
       - name: Build (Release) with live progress
         shell: pwsh
         run: |
@@ -100,7 +112,7 @@ jobs:
           $log = Join-Path $PWD "build-full.log"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
           Write-Host "=== build start $(Get-Date -Format u) ==="
-          cmake --build build --config Release 2>&1 | Tee-Object -FilePath $log
+          cmake --build build --config Release --verbose 2>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           $sw.Stop()
           Write-Host "=== build finished in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code) ==="
@@ -146,7 +158,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build-full.log
+          path: |
+            build-full.log
+            build/CMakeCache.txt
+            build/CMakeFiles/impl-Release.ninja
+            build/CMakeFiles/rules.ninja
           if-no-files-found: warn
 
       - name: Upload DLL only
