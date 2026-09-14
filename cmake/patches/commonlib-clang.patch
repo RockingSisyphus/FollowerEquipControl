@@ -1,0 +1,26 @@
+diff --git a/include/RE/B/BSTPointerAndFlags.h b/include/RE/B/BSTPointerAndFlags.h
+index 4bb7f5e..6754304 100644
+--- a/include/RE/B/BSTPointerAndFlags.h
++++ b/include/RE/B/BSTPointerAndFlags.h
+@@ -44,7 +44,7 @@ namespace RE
+ 				clear_flags();
+ 				a_rhs.clear_flags();
+ 				_storage.address = a_rhs._storage.address;
+-				a_rhs.storage.address = 0;
++				a_rhs._storage.address = 0;
+ 			}
+ 			return *this;
+ 		}
+diff --git a/include/RE/G/GHashSetBase.h b/include/RE/G/GHashSetBase.h
+index 75fdff5..3fc2226 100644
+--- a/include/RE/G/GHashSetBase.h
++++ b/include/RE/G/GHashSetBase.h
+@@ -211,7 +211,7 @@ namespace RE
+ 			Clear();
+ 			if (a_src.IsEmpty() == false) {
+ 				SetCapacity(a_memAddr, a_src.GetSize());
+-				for (const_iterator it = a_src.Begin(); it != a_src.End(); ++it) {
++				for (const_iterator it = a_src.begin(); it != a_src.end(); ++it) {
+ 					Add(a_memAddr, *it);
+ 				}
+ 			}

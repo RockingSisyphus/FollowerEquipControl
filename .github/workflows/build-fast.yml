@@ -28,6 +28,10 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Fix CommonLib template member typos for clang
+        shell: pwsh
+        run: git -C extern/CommonLibSSE-NG apply ../../cmake/patches/commonlib-clang.patch
+
       - name: Set up MSVC developer environment
         uses: ilammy/msvc-dev-cmd@v1
 
