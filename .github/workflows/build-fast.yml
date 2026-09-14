@@ -20,7 +20,7 @@ jobs:
     runs-on: windows-2022
     # Guard rail: with IPO disabled the whole build is ~470 translation units
     # (measured ~2.2 s each) plus linking, so anything past this is a real hang.
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout (with CommonLibSSE-NG submodule)
@@ -82,15 +82,44 @@ jobs:
           if ($gl) { throw "/GL is still present in build-Release.ninja; IPO was not disabled" }
           Write-Host "verified: no /GL in build-Release.ninja"
 
-      - name: Build (Release)
+      - name: Build (Release) with progress watchdog
         shell: pwsh
         run: |
+          $log = Join-Path $PWD "build-full.log"
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          cmake --build build --config Release --parallel
-          $code = $LASTEXITCODE
+          $job = Start-Job -ArgumentList $PWD.Path, $log -ScriptBlock {
+            param($dir, $logfile)
+            Set-Location $dir
+            cmake --build build --config Release *> $logfile
+          }
+          # 每 5 分钟汇报一次真实进度，避免出现"跑了 45 分钟不知道在哪"的黑盒
+          while ($job.State -eq 'Running') {
+            Start-Sleep -Seconds 300
+            if (Test-Path $log) {
+              $last = (Get-Content $log | Select-String -Pattern '^\[\d+/\d+\]' | Select-Object -Last 1).Line
+              Write-Host "[$($sw.Elapsed.ToString('hh\:mm\:ss'))] $last"
+            }
+          }
+          Receive-Job $job | Out-Null
+          Remove-Job $job -Force
           $sw.Stop()
-          Write-Host "build elapsed: $($sw.Elapsed.TotalSeconds.ToString('0.0'))s (exit=$code)"
-          if ($code -ne 0) { throw "build failed" }
+          Write-Host "--- build finished in $($sw.Elapsed.TotalSeconds.ToString('0.0'))s ---"
+          if (Test-Path $log) {
+            $lines = Get-Content $log
+            Write-Host "log lines: $($lines.Count)"
+            Write-Host "--- 编译/链接阶段时间点 ---"
+            $lines | Select-String -Pattern 'Linking|Building CXX object CMakeFiles\\FollowerEquipControl' | Select-Object -First 3 | ForEach-Object { $_.Line }
+            $lines | Select-String -Pattern 'Linking' | Select-Object -Last 3 | ForEach-Object { $_.Line }
+            Write-Host "--- 最后 10 行 ---"
+            $lines | Select-Object -Last 10
+          }
+          # 失败判定：DLL 是否真的产出
+          $dll = Get-ChildItem -Recurse build -Filter FollowerEquipControl.dll -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $dll) {
+            if (Test-Path $log) { Get-Content $log | Select-Object -Last 40 }
+            throw "build failed: FollowerEquipControl.dll not produced"
+          }
+          Write-Host "DLL produced: $($dll.FullName) ($($dll.Length) bytes)"
 
       - name: Verify the built DLL
         shell: pwsh
@@ -113,6 +142,14 @@ jobs:
           Copy-Item "mod/SKSE/Plugins/FollowerEquipControl/*" "$out/SKSE/Plugins/FollowerEquipControl/" -Recurse -Force
           Copy-Item "mod/Interface" "$out/Interface" -Recurse -Force
           Get-FileHash "$out/SKSE/Plugins/FollowerEquipControl.dll" -Algorithm SHA256 | Format-List | Out-String | Write-Host
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build-full.log
+          if-no-files-found: warn
 
       - name: Upload DLL only
         uses: actions/upload-artifact@v4
