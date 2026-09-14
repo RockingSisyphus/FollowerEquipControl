@@ -92,6 +92,18 @@ endif()
 
 add_subdirectory("${_commonlib_source}" "${CMAKE_CURRENT_BINARY_DIR}/CommonLibSSE" EXCLUDE_FROM_ALL)
 
+# CommonLibSSE-NG sets CMAKE_INTERPROCEDURAL_OPTIMIZATION to ON for Release in its own
+# CMakeLists (check_ipo_supported -> set(... $<$<CONFIG:RELEASE>:ON>)), which overrides
+# anything passed on the command line. Its static library is ~366 translation units, so
+# leaving /GL on forces the linker to run /LTCG over all of them: this is what turned a
+# ~30 minute build into a multi-hour one on a 2-core runner. When IPO is disabled for the
+# plugin, disable it for the dependency too so the final link stays fast.
+if(NOT SKSE_ENABLE_IPO AND TARGET CommonLibSSE)
+  set_property(TARGET CommonLibSSE PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+  set_property(TARGET CommonLibSSE PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE FALSE)
+  message(STATUS "Interprocedural optimisation: OFF for CommonLibSSE as well")
+endif()
+
 target_include_directories(
   "${PROJECT_NAME}"
   PRIVATE
